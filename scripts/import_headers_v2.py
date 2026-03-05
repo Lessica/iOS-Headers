@@ -651,6 +651,72 @@ def import_bundle(
     return (total_files, total_symbols)
 
 
+def _existing_versions(ch: ClickHouseClient, args: argparse.Namespace) -> set[tuple[int, str]]:
+    rows = ch.execute(
+        "SELECT version_num, version_id FROM versions FORMAT TSV",
+        retries=args.max_retries,
+        retry_sleep=args.retry_sleep,
+    ).splitlines()
+    result: set[tuple[int, str]] = set()
+    for row in rows:
+        if not row:
+            continue
+        parts = row.split("\t")
+        if len(parts) != 2:
+            continue
+        result.add((int(parts[0]), parts[1]))
+    return result
+
+
+def _existing_path_ids(ch: ClickHouseClient, path_ids: list[int], args: argparse.Namespace) -> set[int]:
+    if not path_ids:
+        return set()
+
+    existing: set[int] = set()
+    query_chunk_size = 500
+    for offset in range(0, len(path_ids), query_chunk_size):
+        chunk = path_ids[offset : offset + query_chunk_size]
+        in_clause = ", ".join(str(item) for item in chunk)
+        sql = f"SELECT path_id FROM paths WHERE path_id IN ({in_clause}) FORMAT TSV"
+        rows = ch.execute(
+            sql,
+            retries=args.max_retries,
+            retry_sleep=args.retry_sleep,
+        ).splitlines()
+        for row in rows:
+            text = row.strip()
+            if text:
+                existing.add(int(text))
+    return existing
+
+
+def _flush_new_paths(
+    ch: ClickHouseClient,
+    path_rows: list[tuple[Any, ...]],
+    args: argparse.Namespace,
+) -> int:
+    if not path_rows:
+        return 0
+
+    deduped_by_path: dict[int, tuple[Any, ...]] = {}
+    for row in path_rows:
+        deduped_by_path[int(row[0])] = row
+
+    deduped_rows = list(deduped_by_path.values())
+    existing = _existing_path_ids(ch, [int(row[0]) for row in deduped_rows], args)
+    new_rows = [row for row in deduped_rows if int(row[0]) not in existing]
+
+    if new_rows:
+        ch.insert_tsv(
+            "paths",
+            ["path_id", "absolute_path", "created_at"],
+            new_rows,
+            retries=args.max_retries,
+            retry_sleep=args.retry_sleep,
+        )
+    return len(new_rows)
+
+
 def ensure_versions_and_paths(
     ch: ClickHouseClient,
     versions: list[VersionInfo],
@@ -667,6 +733,7 @@ def ensure_versions_and_paths(
         total_headers += len(headers)
 
     scanned = 0
+    existing_versions = _existing_versions(ch, args)
     version_rows = [
         (
             item.version_num,
@@ -679,25 +746,28 @@ def ensure_versions_and_paths(
             datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         )
         for item in versions
+        if (item.version_num, item.version_id) not in existing_versions
     ]
-    ch.insert_tsv(
-        "versions",
-        [
-            "version_num",
-            "version_id",
-            "ios_version",
-            "build",
-            "ord",
-            "label",
-            "bundle_name",
-            "created_at",
-        ],
-        version_rows,
-        retries=args.max_retries,
-        retry_sleep=args.retry_sleep,
-    )
+    if version_rows:
+        ch.insert_tsv(
+            "versions",
+            [
+                "version_num",
+                "version_id",
+                "ios_version",
+                "build",
+                "ord",
+                "label",
+                "bundle_name",
+                "created_at",
+            ],
+            version_rows,
+            retries=args.max_retries,
+            retry_sleep=args.retry_sleep,
+        )
 
     path_rows: list[tuple[Any, ...]] = []
+    inserted_paths = 0
     for version in versions:
         bundle_root = headers_root / version.bundle_name
         files = sorted(bundle_root.rglob("*.h"))
@@ -713,26 +783,15 @@ def ensure_versions_and_paths(
                 _print_progress("paths-scan", scanned, total_headers, scan_start_ts)
 
             if len(path_rows) >= max(5000, args.batch_size * 5):
-                ch.insert_tsv(
-                    "paths",
-                    ["path_id", "absolute_path", "created_at"],
-                    path_rows,
-                    retries=args.max_retries,
-                    retry_sleep=args.retry_sleep,
-                )
+                inserted_paths += _flush_new_paths(ch, path_rows, args)
                 path_rows.clear()
 
     if path_rows:
-        ch.insert_tsv(
-            "paths",
-            ["path_id", "absolute_path", "created_at"],
-            path_rows,
-            retries=args.max_retries,
-            retry_sleep=args.retry_sleep,
-        )
+        inserted_paths += _flush_new_paths(ch, path_rows, args)
 
     if total_headers > 0:
         _print_progress("paths-scan", scanned, total_headers, scan_start_ts)
+    print(f"[setup] new versions inserted={len(version_rows)} new paths inserted={inserted_paths}")
 
 
 def truncate_all(ch: ClickHouseClient, args: argparse.Namespace) -> None:
