@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import time
+from typing import Any
 from urllib import error, parse, request
 
 
@@ -19,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--truncate-first", action="store_true")
     parser.add_argument("--max-retries", type=int, default=3)
     parser.add_argument("--retry-sleep", type=float, default=1.0)
+    parser.add_argument("--progress-every", type=int, default=1)
     return parser.parse_args()
 
 
@@ -66,6 +68,39 @@ def _build_filter_sql(bundles: list[str], version_ids: list[str]) -> str:
     return "WHERE " + " AND ".join(filters)
 
 
+def _get_all_bundles(ch: ClickHouseClient, retries: int, retry_sleep: float) -> list[str]:
+    rows = ch.execute(
+        "SELECT DISTINCT bundle_name FROM versions ORDER BY bundle_name",
+        retries=retries,
+        retry_sleep=retry_sleep,
+    ).splitlines()
+    return [row.strip() for row in rows if row.strip()]
+
+
+def _scope_insert_sql(filter_sql: str) -> str:
+    return f"""
+    INSERT INTO symbol_presence
+    (path_id, owner_name, symbol_type, symbol_key, version_nums, versions_count, updated_at)
+    SELECT
+        fi.path_id,
+        s.owner_name,
+        s.symbol_type,
+        s.symbol_key,
+        arraySort(groupUniqArray(fi.version_num)) AS version_nums,
+        toUInt16(length(version_nums)) AS versions_count,
+        now() AS updated_at
+    FROM symbols AS s
+    INNER JOIN file_instances AS fi ON fi.content_id = s.content_id
+    INNER JOIN versions AS v ON v.version_num = fi.version_num
+    {filter_sql}
+    GROUP BY
+        fi.path_id,
+        s.owner_name,
+        s.symbol_type,
+        s.symbol_key
+    """
+
+
 def main() -> None:
     args = parse_args()
 
@@ -88,30 +123,50 @@ def main() -> None:
         )
         print("[setup] truncated symbol_presence")
 
-    start = time.time()
+    scopes: list[dict[str, Any]] = []
+    if args.bundle:
+        for item in args.bundle:
+            scopes.append(
+                {
+                    "label": f"bundle={item}",
+                    "filter_sql": _build_filter_sql([item], args.version_id),
+                }
+            )
+    elif args.version_id:
+        for item in args.version_id:
+            scopes.append(
+                {
+                    "label": f"version={item}",
+                    "filter_sql": _build_filter_sql([], [item]),
+                }
+            )
+    else:
+        all_bundles = _get_all_bundles(ch, args.max_retries, args.retry_sleep)
+        for item in all_bundles:
+            scopes.append(
+                {
+                    "label": f"bundle={item}",
+                    "filter_sql": _build_filter_sql([item], []),
+                }
+            )
 
-    insert_sql = f"""
-    INSERT INTO symbol_presence
-    (path_id, owner_name, symbol_type, symbol_key, version_nums, versions_count, updated_at)
-    SELECT
-        fi.path_id,
-        s.owner_name,
-        s.symbol_type,
-        s.symbol_key,
-        arraySort(groupUniqArray(fi.version_num)) AS version_nums,
-        toUInt16(length(version_nums)) AS versions_count,
-        now() AS updated_at
-    FROM symbols AS s
-    INNER JOIN file_instances AS fi ON fi.content_id = s.content_id
-    INNER JOIN versions AS v ON v.version_num = fi.version_num
-    {filter_sql}
-    GROUP BY
-        fi.path_id,
-        s.owner_name,
-        s.symbol_type,
-        s.symbol_key
-    """
-    ch.execute(insert_sql, retries=args.max_retries, retry_sleep=args.retry_sleep)
+    if not scopes:
+        raise SystemExit("No scope to process")
+
+    start = time.time()
+    total_scopes = len(scopes)
+    for index, scope in enumerate(scopes, start=1):
+        scope_start = time.time()
+        label = str(scope["label"])
+        print(f"[progress] start {index}/{total_scopes} {label}")
+        ch.execute(
+            _scope_insert_sql(str(scope["filter_sql"])),
+            retries=args.max_retries,
+            retry_sleep=args.retry_sleep,
+        )
+        elapsed = time.time() - scope_start
+        if args.progress_every > 0 and (index % args.progress_every == 0 or index == total_scopes):
+            print(f"[progress] done {index}/{total_scopes} {label} elapsed_sec={elapsed:.2f}")
 
     if filter_sql:
         count_sql = f"""

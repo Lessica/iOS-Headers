@@ -25,6 +25,7 @@ CH_PORT="$(read_env CLICKHOUSE_HTTP_PORT 18123)"
 CH_DB="$(read_env CLICKHOUSE_DB ios_headers)"
 CH_USER="$(read_env CLICKHOUSE_USER default)"
 CH_PASS="$(read_env CLICKHOUSE_PASSWORD '')"
+PROGRESS_EVERY="$(read_env PROGRESS_EVERY 1000)"
 
 PY_SCRIPT="$ROOT_DIR/scripts/build_symbol_presence_v2.py"
 PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
@@ -43,4 +44,5 @@ fi
   --clickhouse-db "$CH_DB" \
   --clickhouse-user "$CH_USER" \
   --clickhouse-password "$CH_PASS" \
+  --progress-every "$PROGRESS_EVERY" \
   "$@"

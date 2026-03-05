@@ -206,7 +206,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--truncate-all", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
+    parser.add_argument("--progress-every", type=int, default=1000)
     return parser.parse_args()
+
+
+def _format_duration(seconds: float) -> str:
+    seconds_int = max(0, int(seconds))
+    minutes, sec = divmod(seconds_int, 60)
+    hours, minute = divmod(minutes, 60)
+    if hours > 0:
+        return f"{hours:02d}:{minute:02d}:{sec:02d}"
+    return f"{minute:02d}:{sec:02d}"
+
+
+def _print_progress(prefix: str, done: int, total: int, start_ts: float) -> None:
+    elapsed = max(0.001, time.time() - start_ts)
+    rate = done / elapsed
+    ratio = (done / total) if total > 0 else 0.0
+    remain = max(0, total - done)
+    eta = remain / rate if rate > 0 else 0.0
+    print(
+        f"[progress] {prefix}: {done}/{total} ({ratio * 100:.2f}%) "
+        f"rate={rate:.2f} files/s eta={_format_duration(eta)} elapsed={_format_duration(elapsed)}"
+    )
 
 
 def parse_version_tuple(version: str) -> tuple[int, ...]:
@@ -501,6 +523,8 @@ def import_bundle(
     symbols_rows: list[tuple[Any, ...]] = []
     total_files = 0
     total_symbols = 0
+    total_pending = len(files) - start_index
+    bundle_start_ts = time.time()
 
     def flush_batches() -> None:
         if contents_rows:
@@ -608,19 +632,21 @@ def import_bundle(
                 total_files += 1
                 total_symbols += len(parsed_symbols)
 
+                if args.progress_every > 0 and total_files % args.progress_every == 0:
+                    _print_progress(version.bundle_name, total_files, total_pending, bundle_start_ts)
+
                 if len(contents_rows) >= args.batch_size:
                     flush_batches()
                     bundle_state["next_index"] = offset + 1
                     save_state(args.state_file, state)
-                    if total_files % (args.batch_size * 5) == 0:
-                        print(
-                            f"[progress] {version.bundle_name}: files={total_files} symbols={total_symbols}"
-                        )
 
     flush_batches()
     bundle_state["next_index"] = len(files)
     bundle_state["done"] = True
     save_state(args.state_file, state)
+
+    _print_progress(version.bundle_name, total_files, total_pending, bundle_start_ts)
+    print(f"[bundle-done] {version.bundle_name}: files={total_files} symbols={total_symbols}")
 
     return (total_files, total_symbols)
 
@@ -631,6 +657,16 @@ def ensure_versions_and_paths(
     headers_root: Path,
     args: argparse.Namespace,
 ) -> None:
+    scan_start_ts = time.time()
+    total_headers = 0
+    for version in versions:
+        bundle_root = headers_root / version.bundle_name
+        headers = sorted(bundle_root.rglob("*.h"))
+        if args.max_files > 0:
+            headers = headers[: args.max_files]
+        total_headers += len(headers)
+
+    scanned = 0
     version_rows = [
         (
             item.version_num,
@@ -671,6 +707,10 @@ def ensure_versions_and_paths(
             absolute_path = to_absolute_path(header_file.relative_to(bundle_root).as_posix())
             path_id = content_id_for("path", absolute_path)
             path_rows.append((path_id, absolute_path, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
+            scanned += 1
+
+            if args.progress_every > 0 and scanned % args.progress_every == 0:
+                _print_progress("paths-scan", scanned, total_headers, scan_start_ts)
 
             if len(path_rows) >= max(5000, args.batch_size * 5):
                 ch.insert_tsv(
@@ -690,6 +730,9 @@ def ensure_versions_and_paths(
             retries=args.max_retries,
             retry_sleep=args.retry_sleep,
         )
+
+    if total_headers > 0:
+        _print_progress("paths-scan", scanned, total_headers, scan_start_ts)
 
 
 def truncate_all(ch: ClickHouseClient, args: argparse.Namespace) -> None:

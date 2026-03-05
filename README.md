@@ -36,6 +36,11 @@
 - 单服务日志：`zsh scripts/deploy_local_stack.zsh logs clickhouse`
 - 重建表结构：`zsh scripts/deploy_local_stack.zsh init-db`
 
+默认进度刷新频率可在 `deploy/.env` 中统一配置：
+- `PROGRESS_EVERY=1000`
+- 作用于 `import_headers_v2.zsh`、`build_symbol_presence_v2.zsh`、`verify_import_integrity_v2.zsh`
+- 如命令行显式传入 `--progress-every`，会覆盖该默认值
+
 ## v2 导入流程（无去重）
 
 ### 依赖
@@ -53,6 +58,8 @@
   - `zsh scripts/import_headers_v2.zsh --bundle 19C56__iPhone11,2_4_6_iPhone12,3_5 --resume`
 - 清空后重导：
   - `zsh scripts/import_headers_v2.zsh --truncate-all --bundle 19C56__iPhone11,2_4_6_iPhone12,3_5`
+- 显示更密集进度（每 200 文件）：
+  - `zsh scripts/import_headers_v2.zsh --bundle 19C56__iPhone11,2_4_6_iPhone12,3_5 --progress-every 200`
 
 ### 导入行为
 
@@ -74,6 +81,8 @@
   - `zsh scripts/build_symbol_presence_v2.zsh --bundle 19C56__iPhone11,2_4_6_iPhone12,3_5`
 - 指定 version_id：
   - `zsh scripts/build_symbol_presence_v2.zsh --version-id '15.2|19C56'`
+- 显示阶段进度：
+  - `zsh scripts/build_symbol_presence_v2.zsh --truncate-first --progress-every 1`
 
 ## 导入完整性核对
 
@@ -87,6 +96,8 @@
   - `zsh scripts/verify_import_integrity_v2.zsh --inspect-all-bundles`
 - 巡检 + 每 bundle 抽样：
   - `zsh scripts/verify_import_integrity_v2.zsh --inspect-all-bundles --sample-check 20`
+- 控制进度刷新频率（对象计数/抽样）：
+  - `zsh scripts/verify_import_integrity_v2.zsh --inspect-all-bundles --sample-check 20 --progress-every 5000`
 
 核对退出码：
 

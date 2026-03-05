@@ -30,6 +30,7 @@ MINIO_PORT="$(read_env MINIO_API_PORT 19001)"
 MINIO_USER="$(read_env MINIO_ROOT_USER minioadmin)"
 MINIO_PASS="$(read_env MINIO_ROOT_PASSWORD minioadmin)"
 MINIO_BUCKET="$(read_env MINIO_BUCKET ios-headers)"
+PROGRESS_EVERY="$(read_env PROGRESS_EVERY 1000)"
 
 PY_SCRIPT="$ROOT_DIR/scripts/verify_import_integrity_v2.py"
 PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
@@ -52,4 +53,5 @@ fi
   --minio-access-key "$MINIO_USER" \
   --minio-secret-key "$MINIO_PASS" \
   --minio-bucket "$MINIO_BUCKET" \
+  --progress-every "$PROGRESS_EVERY" \
   "$@"

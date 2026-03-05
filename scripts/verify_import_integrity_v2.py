@@ -59,10 +59,32 @@ class MinioClient:
             secure=secure,
         )
 
-    def count_objects(self, prefix: str = "") -> int:
+    def count_objects(
+        self,
+        prefix: str = "",
+        *,
+        progress_every: int = 0,
+        progress_label: str = "",
+    ) -> int:
         count = 0
+        start_ts = time.time()
         for _ in self.client.list_objects(self.bucket, prefix=prefix, recursive=True):
             count += 1
+            if progress_every > 0 and count % progress_every == 0:
+                elapsed = max(0.001, time.time() - start_ts)
+                rate = count / elapsed
+                print(
+                    f"[progress] minio-count {progress_label} objects={count} rate={rate:.2f} obj/s",
+                    file=sys.stderr,
+                )
+
+        if progress_every > 0:
+            elapsed = max(0.001, time.time() - start_ts)
+            rate = count / elapsed
+            print(
+                f"[progress] minio-count done {progress_label} objects={count} rate={rate:.2f} obj/s",
+                file=sys.stderr,
+            )
         return count
 
     def object_exists(self, object_name: str) -> bool:
@@ -95,6 +117,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--inspect-all-bundles", action="store_true")
 
     parser.add_argument("--sample-check", type=int, default=0)
+    parser.add_argument("--progress-every", type=int, default=10000)
     parser.add_argument("--max-retries", type=int, default=3)
     parser.add_argument("--retry-sleep", type=float, default=1.0)
     return parser.parse_args()
@@ -127,6 +150,7 @@ def _verify_scope(
     bundles: list[str],
     minio_prefix: str,
     sample_check: int,
+    progress_every: int,
     max_retries: int,
     retry_sleep: float,
 ) -> dict[str, Any]:
@@ -140,7 +164,11 @@ def _verify_scope(
     ).strip()
     ch_count = int(ch_count_text or "0")
 
-    minio_count = mc.count_objects(prefix=minio_prefix)
+    minio_count = mc.count_objects(
+        prefix=minio_prefix,
+        progress_every=progress_every,
+        progress_label=minio_prefix or "(all)",
+    )
 
     result: dict[str, Any] = {
         "ok": ch_count == minio_count,
@@ -160,6 +188,7 @@ def _verify_scope(
         ).splitlines()
         checked = 0
         missing: list[str] = []
+        sample_start = time.time()
 
         for row in rows:
             blob_key = row.strip()
@@ -170,6 +199,22 @@ def _verify_scope(
             checked += 1
             if not exists:
                 missing.append(object_name)
+
+            if progress_every > 0 and checked % progress_every == 0:
+                elapsed = max(0.001, time.time() - sample_start)
+                rate = checked / elapsed
+                print(
+                    f"[progress] sample-check {minio_prefix or '(all)'} {checked}/{sample_check} rate={rate:.2f} item/s",
+                    file=sys.stderr,
+                )
+
+        if progress_every > 0:
+            elapsed = max(0.001, time.time() - sample_start)
+            rate = checked / elapsed if checked > 0 else 0.0
+            print(
+                f"[progress] sample-check done {minio_prefix or '(all)'} {checked}/{sample_check} rate={rate:.2f} item/s",
+                file=sys.stderr,
+            )
 
         result["sample_checked"] = checked
         result["sample_missing_count"] = len(missing)
@@ -204,13 +249,16 @@ def main() -> None:
         bundles = _get_all_bundles(ch, args.max_retries, args.retry_sleep)
         reports: list[dict[str, Any]] = []
         all_ok = True
-        for bundle_name in bundles:
+        total_bundles = len(bundles)
+        for index, bundle_name in enumerate(bundles, start=1):
+            print(f"[progress] inspect bundle {index}/{total_bundles}: {bundle_name}", file=sys.stderr)
             report = _verify_scope(
                 ch,
                 mc,
                 bundles=[bundle_name],
                 minio_prefix=bundle_name,
                 sample_check=args.sample_check,
+                progress_every=args.progress_every,
                 max_retries=args.max_retries,
                 retry_sleep=args.retry_sleep,
             )
@@ -236,6 +284,7 @@ def main() -> None:
             bundles=args.bundle,
             minio_prefix=minio_prefix,
             sample_check=args.sample_check,
+            progress_every=args.progress_every,
             max_retries=args.max_retries,
             retry_sleep=args.retry_sleep,
         )
