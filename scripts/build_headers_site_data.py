@@ -132,7 +132,6 @@ def try_read_plist(path: Path, issues: list[Issue]) -> dict[str, Any] | None:
 
 def build_version_info(bundle_name: str, files_root: Path, issues: list[Issue]) -> VersionInfo:
     fallback_build = bundle_name.split("__", maxsplit=1)[0]
-    fallback_version = "unknown"
 
     metadata_dir = files_root / bundle_name
     metadata = None
@@ -150,12 +149,18 @@ def build_version_info(bundle_name: str, files_root: Path, issues: list[Issue]) 
     if metadata is None and restore_plist.exists():
         metadata = try_read_plist(restore_plist, issues)
 
-    ios_version = fallback_version
-    build = fallback_build
+    if metadata is None:
+        raise FileNotFoundError(
+            "Unable to determine iOS version metadata for "
+            f"{bundle_name}; tried: {system_version_plist}, "
+            f"{system_version_plist_nested}, {restore_plist}"
+        )
 
-    if metadata is not None:
-        ios_version = str(metadata.get("ProductVersion", fallback_version))
-        build = str(metadata.get("ProductBuildVersion", fallback_build))
+    ios_version = str(metadata.get("ProductVersion", "")).strip()
+    if not ios_version:
+        raise ValueError(f"Missing ProductVersion in metadata for {bundle_name}")
+
+    build = str(metadata.get("ProductBuildVersion", fallback_build))
 
     version_id = f"{ios_version}|{build}"
     label = f"iOS {ios_version} ({build})"
