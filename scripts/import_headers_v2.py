@@ -68,21 +68,24 @@ class ClickHouseClient:
             "database": self.database,
             "user": self.user,
             "password": self.password,
-            "query": sql,
         }
         url = f"{self.base_url}/?{parse.urlencode(params)}"
+        data = sql.encode("utf-8")
         last_exc: Exception | None = None
         for attempt in range(1, retries + 1):
             try:
-                req = request.Request(url=url, method="POST")
+                req = request.Request(url=url, data=data, method="POST")
                 with request.urlopen(req, timeout=300) as resp:
                     return resp.read().decode("utf-8", errors="replace")
-            except (error.HTTPError, error.URLError, TimeoutError) as exc:
+            except error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                last_exc = RuntimeError(f"ClickHouse HTTP {exc.code}: {body.strip()[:500]}")
+            except (error.URLError, TimeoutError) as exc:
                 last_exc = exc
-                if attempt == retries:
-                    break
-                time.sleep(retry_sleep * attempt)
-        raise RuntimeError(f"ClickHouse SQL failed after retries: {sql[:120]}...") from last_exc
+            if attempt == retries:
+                break
+            time.sleep(retry_sleep * attempt)
+        raise RuntimeError(f"ClickHouse SQL failed after retries: {sql[:200]}...") from last_exc
 
     def insert_tsv(
         self,
