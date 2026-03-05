@@ -8,7 +8,7 @@ from urllib import error, parse, request
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build symbol_presence aggregation table from symbols/file_instances (v2, no dedup)."
+        description="Build symbol_presence aggregation table from symbols/file_instances (v2)."
     )
     parser.add_argument("--clickhouse-url", default="http://127.0.0.1:18123")
     parser.add_argument("--clickhouse-db", default="ios_headers")
@@ -59,27 +59,34 @@ def _quote(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
-def _build_filter_sql(bundles: list[str], version_ids: list[str]) -> str:
+def _get_version_nums(
+    ch: ClickHouseClient,
+    bundles: list[str],
+    version_ids: list[str],
+    retries: int,
+    retry_sleep: float,
+) -> list[int]:
+    """Return version_num values matching the given filters (all if no filters)."""
     filters: list[str] = []
     if bundles:
-        filters.append("v.bundle_name IN (" + ", ".join(_quote(item) for item in bundles) + ")")
+        filters.append("bundle_name IN (" + ", ".join(_quote(b) for b in bundles) + ")")
     if version_ids:
-        filters.append("v.version_id IN (" + ", ".join(_quote(item) for item in version_ids) + ")")
-    if not filters:
-        return ""
-    return "WHERE " + " AND ".join(filters)
-
-
-def _get_all_bundles(ch: ClickHouseClient, retries: int, retry_sleep: float) -> list[str]:
+        filters.append("version_id IN (" + ", ".join(_quote(v) for v in version_ids) + ")")
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
     rows = ch.execute(
-        "SELECT DISTINCT bundle_name FROM versions ORDER BY bundle_name",
+        f"SELECT version_num FROM versions {where} ORDER BY version_num",
         retries=retries,
         retry_sleep=retry_sleep,
     ).splitlines()
-    return [row.strip() for row in rows if row.strip()]
+    return [int(row.strip()) for row in rows if row.strip()]
 
 
-def _scope_insert_sql(filter_sql: str) -> str:
+def _version_insert_sql(version_num: int) -> str:
+    # symbol_presence uses AggregatingMergeTree with AggregateFunction(groupBitOr, UInt64).
+    # Inserting one version at a time keeps each query small (no cross-version JOIN) and
+    # lets ClickHouse merge partial aggregate states lazily in the background.
+    # NOTE: version_num must be in the range [1, 64] because the bitmap is a UInt64;
+    # bits 0-63 correspond to version_nums 1-64 respectively.
     return f"""
     INSERT INTO symbol_presence
     (path_id, owner_name, symbol_type, symbol_key, version_bitmap, updated_at)
@@ -88,17 +95,12 @@ def _scope_insert_sql(filter_sql: str) -> str:
         s.owner_name,
         s.symbol_type,
         s.symbol_key,
-        groupBitOr(bitShiftLeft(toUInt64(1), fi.version_num - 1)) AS version_bitmap,
-        now() AS updated_at
+        groupBitOrState(bitShiftLeft(toUInt64(1), fi.version_num - 1)),
+        now()
     FROM symbols AS s
     INNER JOIN file_instances AS fi ON fi.content_id = s.content_id
-    INNER JOIN versions AS v ON v.version_num = fi.version_num
-    {filter_sql}
-    GROUP BY
-        fi.path_id,
-        s.owner_name,
-        s.symbol_type,
-        s.symbol_key
+    WHERE fi.version_num = {version_num}
+    GROUP BY fi.path_id, s.owner_name, s.symbol_type, s.symbol_key
     """
 
 
@@ -114,9 +116,7 @@ def main() -> None:
 
     ch.execute("SELECT 1", retries=args.max_retries, retry_sleep=args.retry_sleep)
 
-    filter_sql = _build_filter_sql(args.bundle, args.version_id)
-
-    if args.truncate_first and not filter_sql:
+    if args.truncate_first and not args.bundle and not args.version_id:
         ch.execute(
             "TRUNCATE TABLE symbol_presence",
             retries=args.max_retries,
@@ -127,51 +127,34 @@ def main() -> None:
     start = time.time()
     print("[progress] stage 1/3 prepare")
 
+    version_nums = _get_version_nums(
+        ch, args.bundle, args.version_id, args.max_retries, args.retry_sleep
+    )
+    print(f"[progress] target versions={len(version_nums)}")
+
+    print(f"[progress] stage 2/3 aggregate insert versions={len(version_nums)}")
     insert_start = time.time()
 
-    if not filter_sql:
-        # Process one bundle at a time to stay within ClickHouse memory limits.
-        # A single aggregation over all bundles can exceed available RAM when the
-        # dataset is large; splitting by bundle keeps each query's working set small.
-        bundles = _get_all_bundles(ch, args.max_retries, args.retry_sleep)
-        print(f"[progress] stage 2/3 aggregate insert bundles={len(bundles)}")
-        for idx, bundle in enumerate(bundles, 1):
-            bundle_filter = _build_filter_sql([bundle], [])
-            bundle_start = time.time()
-            ch.execute(
-                _scope_insert_sql(bundle_filter),
-                retries=args.max_retries,
-                retry_sleep=args.retry_sleep,
-            )
-            if idx % args.progress_every == 0 or idx == len(bundles):
-                print(f"[progress] bundle {idx}/{len(bundles)} {bundle!r} elapsed_sec={time.time() - bundle_start:.2f}")
-    else:
-        print("[progress] stage 2/3 aggregate insert")
+    for idx, version_num in enumerate(version_nums, 1):
+        version_start = time.time()
         ch.execute(
-            _scope_insert_sql(filter_sql),
+            _version_insert_sql(version_num),
             retries=args.max_retries,
             retry_sleep=args.retry_sleep,
         )
+        if idx % args.progress_every == 0 or idx == len(version_nums):
+            print(f"[progress] version {idx}/{len(version_nums)} version_num={version_num} elapsed_sec={time.time() - version_start:.2f}")
 
     print(f"[progress] aggregate insert done elapsed_sec={time.time() - insert_start:.2f}")
 
-    if filter_sql:
-        count_sql = f"""
-        SELECT count()
-        FROM symbol_presence AS sp
-        INNER JOIN paths AS p ON p.path_id = sp.path_id
-        WHERE sp.path_id IN (
-            SELECT DISTINCT fi.path_id
-            FROM file_instances AS fi
-            INNER JOIN versions AS v ON v.version_num = fi.version_num
-            {filter_sql}
-        )
-        """
-    else:
-        count_sql = "SELECT count() FROM symbol_presence"
-
     print("[progress] stage 3/3 count rows")
-    total = ch.execute(count_sql, retries=args.max_retries, retry_sleep=args.retry_sleep).strip()
+    # FINAL forces ClickHouse to merge all partial aggregate states before counting,
+    # returning the true number of distinct (path_id, symbol_type, symbol_key, owner_name) rows.
+    total = ch.execute(
+        "SELECT count() FROM symbol_presence FINAL",
+        retries=args.max_retries,
+        retry_sleep=args.retry_sleep,
+    ).strip()
     elapsed = round(time.time() - start, 2)
 
     print(f"[done] symbol_presence rows={total} elapsed_sec={elapsed}")

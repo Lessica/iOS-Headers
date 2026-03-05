@@ -66,9 +66,9 @@ CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
     owner_name String,
     symbol_type LowCardinality(String),
     symbol_key String,
-    version_bitmap UInt64,
-    updated_at DateTime DEFAULT now()
+    version_bitmap AggregateFunction(groupBitOr, UInt64),
+    updated_at SimpleAggregateFunction(max, DateTime) DEFAULT now()
 )
-ENGINE = ReplacingMergeTree(updated_at)
+ENGINE = AggregatingMergeTree()
 ORDER BY (path_id, symbol_type, symbol_key, owner_name)
 SETTINGS index_granularity = 8192;
