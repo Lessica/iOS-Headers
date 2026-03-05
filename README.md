@@ -12,6 +12,7 @@
 
 - ClickHouse：元数据与符号索引
 - Redis：热点缓存
+- RedisInsight：Redis 可视化管理
 - MinIO：头文件正文对象存储
 
 ### 快速启动
@@ -22,6 +23,8 @@
    - `zsh scripts/deploy_local_stack.zsh up`
 3. 健康检查：
    - `zsh scripts/deploy_local_stack.zsh check`
+
+启动完成后，`deploy_local_stack.zsh up` 会自动在 RedisInsight 中创建到 `redis:6379` 的连接（名称 `local-redis`）。
 
 ### 常用命令
 
@@ -101,6 +104,7 @@
 - ClickHouse HTTP：`http://127.0.0.1:18123`
 - ClickHouse Native：`127.0.0.1:19000`
 - Redis：`127.0.0.1:16379`
+- RedisInsight：`http://127.0.0.1:15540`
 - MinIO API：`http://127.0.0.1:19001`
 - MinIO Console：`http://127.0.0.1:19002`
 

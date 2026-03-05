@@ -37,6 +37,17 @@ services:
       timeout: 3s
       retries: 20
 
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_redisinsight
+    ports:
+      - "${REDIS_INSIGHT_PORT:-15540}:5540"
+    volumes:
+      - ${STACK_DATA_DIR:-./data}/redisinsight:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
   minio:
     image: minio/minio:latest
     container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_minio

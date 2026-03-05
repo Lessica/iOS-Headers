@@ -42,18 +42,47 @@ wait_http_ok() {
   return 1
 }
 
+ensure_redisinsight_connection() {
+  local redisinsight_port="$1"
+  local existing response
+
+  existing="$(curl -fsS "http://127.0.0.1:${redisinsight_port}/api/databases" || echo "[]")"
+  if echo "$existing" | grep -q '"host":"redis"' && echo "$existing" | grep -q '"port":6379'; then
+    echo "redisinsight connection already exists"
+    return 0
+  fi
+
+  response="$(curl -fsS -X POST "http://127.0.0.1:${redisinsight_port}/api/databases" \
+    -H "Content-Type: application/json" \
+    -d '{"host":"redis","port":6379,"name":"local-redis"}')"
+
+  if echo "$response" | grep -q '"host":"redis"' && echo "$response" | grep -q '"port":6379'; then
+    echo "redisinsight connection created"
+    return 0
+  fi
+
+  echo "redisinsight connection setup failed"
+  return 1
+}
+
 up() {
   require_tools
   compose up -d
 
-  local ch_port minio_port
+  local ch_port minio_port redisinsight_port
   ch_port="$(grep -E '^CLICKHOUSE_HTTP_PORT=' "$ENV_FILE" | cut -d'=' -f2)"
   minio_port="$(grep -E '^MINIO_API_PORT=' "$ENV_FILE" | cut -d'=' -f2)"
+  redisinsight_port="$(grep -E '^REDIS_INSIGHT_PORT=' "$ENV_FILE" | cut -d'=' -f2)"
+  if [[ -z "$redisinsight_port" ]]; then
+    redisinsight_port="15540"
+  fi
   wait_http_ok "clickhouse" "http://127.0.0.1:${ch_port}/ping"
   wait_http_ok "minio" "http://127.0.0.1:${minio_port}/minio/health/live"
+  wait_http_ok "redisinsight" "http://127.0.0.1:${redisinsight_port}/api/health"
 
   compose exec -T redis redis-cli ping | grep -q PONG
   echo "redis is healthy"
+  ensure_redisinsight_connection "$redisinsight_port"
 
   echo "stack is up"
   compose ps
