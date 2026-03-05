@@ -66,6 +66,8 @@
 - 导入会将元数据/符号写入 ClickHouse。
 - 导入会将头文件正文上传到 MinIO。
 - 导入会对 `versions(version_num, version_id)` 与 `paths(path_id)` 做增量唯一写入，避免分批导入造成重复项。
+- 默认禁止导入“老于当前库最新版本”的新版本（避免破坏增量语义）。
+- 如需强制导入老版本，显式添加参数：`--allow-old-versions`。
 - 当前流程为 **no-dedup**（不做 content 去重）。
 - `--resume` 会跳过 `versions/paths` 刷新，避免重复写入。
 - `--truncate-all` 与 `--resume` 不能同时使用。

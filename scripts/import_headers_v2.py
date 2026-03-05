@@ -205,6 +205,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--truncate-all", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
     parser.add_argument("--progress-every", type=int, default=1000)
+    parser.add_argument(
+        "--allow-old-versions",
+        action="store_true",
+        help="Allow importing versions older than the current newest version in database",
+    )
     return parser.parse_args()
 
 
@@ -237,6 +242,10 @@ def parse_version_tuple(version: str) -> tuple[int, ...]:
         else:
             tokens.append(-1)
     return tuple(tokens)
+
+
+def version_sort_key(ios_version: str, build: str) -> tuple[tuple[int, ...], str]:
+    return (parse_version_tuple(ios_version), build)
 
 
 def to_absolute_path(path_text: str) -> str:
@@ -460,23 +469,81 @@ def build_versions(headers_root: Path, files_root: Path, bundles: list[str]) -> 
     for bundle_dir in bundle_dirs:
         loaded.append(build_version_info(bundle_dir.name, files_root, issues))
 
-    loaded.sort(key=lambda item: (parse_version_tuple(item.ios_version), item.build), reverse=True)
+    if issues:
+        for issue in issues:
+            print(f"[issue] {issue.path}: {issue.reason}", file=sys.stderr)
+    return loaded
 
+
+def _existing_version_map(ch: ClickHouseClient, args: argparse.Namespace) -> dict[str, int]:
+    rows = ch.execute(
+        "SELECT version_id, version_num FROM versions FORMAT TSV",
+        retries=args.max_retries,
+        retry_sleep=args.retry_sleep,
+    ).splitlines()
+    result: dict[str, int] = {}
+    for row in rows:
+        if not row:
+            continue
+        parts = row.split("\t")
+        if len(parts) != 2:
+            continue
+        result[parts[0]] = int(parts[1])
+    return result
+
+
+def assign_version_numbers(
+    raw_versions: list[VersionInfo],
+    existing_map: dict[str, int],
+    *,
+    allow_old_versions: bool,
+) -> list[VersionInfo]:
+    sorted_versions = sorted(raw_versions, key=lambda item: version_sort_key(item.ios_version, item.build))
+
+    existing_max_num = max(existing_map.values(), default=0)
+    existing_max_key: tuple[tuple[int, ...], str] | None = None
+    if existing_map:
+        pairs = []
+        for version_id in existing_map:
+            ios_version, build = version_id.split("|", maxsplit=1)
+            pairs.append(version_sort_key(ios_version, build))
+        existing_max_key = max(pairs)
+
+    next_new_num = existing_max_num + 1
     assigned: list[VersionInfo] = []
-    for index, item in enumerate(loaded, start=1):
+
+    for item in sorted_versions:
+        if item.version_id in existing_map:
+            assigned.append(
+                VersionInfo(
+                    version_num=existing_map[item.version_id],
+                    version_id=item.version_id,
+                    ios_version=item.ios_version,
+                    build=item.build,
+                    bundle_name=item.bundle_name,
+                )
+            )
+            continue
+
+        current_key = version_sort_key(item.ios_version, item.build)
+        if not allow_old_versions and existing_max_key is not None and current_key <= existing_max_key:
+            raise SystemExit(
+                "Detected import of an older version than current latest. "
+                "Use --allow-old-versions to override. "
+                f"Incoming={item.version_id} Latest={max(existing_map, key=lambda k: existing_map[k])}"
+            )
+
         assigned.append(
             VersionInfo(
-                version_num=index,
+                version_num=next_new_num,
                 version_id=item.version_id,
                 ios_version=item.ios_version,
                 build=item.build,
                 bundle_name=item.bundle_name,
             )
         )
+        next_new_num += 1
 
-    if issues:
-        for issue in issues:
-            print(f"[issue] {issue.path}: {issue.reason}", file=sys.stderr)
     return assigned
 
 
@@ -803,11 +870,6 @@ def main() -> None:
     if not args.files_root.exists() or not args.files_root.is_dir():
         raise SystemExit(f"Invalid files root: {args.files_root}")
 
-    versions = build_versions(args.headers_root, args.files_root, args.bundle)
-    if not versions:
-        raise SystemExit("No bundles found to import")
-
-    state = load_state(args.state_file)
     ch = ClickHouseClient(
         base_url=args.clickhouse_url,
         database=args.clickhouse_db,
@@ -816,6 +878,19 @@ def main() -> None:
     )
 
     ch.execute("SELECT 1", retries=args.max_retries, retry_sleep=args.retry_sleep)
+
+    raw_versions = build_versions(args.headers_root, args.files_root, args.bundle)
+    if not raw_versions:
+        raise SystemExit("No bundles found to import")
+
+    existing_map = _existing_version_map(ch, args)
+    versions = assign_version_numbers(
+        raw_versions,
+        existing_map,
+        allow_old_versions=args.allow_old_versions,
+    )
+
+    state = load_state(args.state_file)
 
     uploader: MinioUploader | None = None
     if args.skip_minio_upload:
