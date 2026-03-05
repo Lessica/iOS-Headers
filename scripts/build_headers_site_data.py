@@ -138,10 +138,15 @@ def build_version_info(bundle_name: str, files_root: Path, issues: list[Issue]) 
     metadata = None
 
     system_version_plist = metadata_dir / "SystemVersion.plist"
+    system_version_plist_nested = (
+        metadata_dir / "System" / "Library" / "CoreServices" / "SystemVersion.plist"
+    )
     restore_plist = metadata_dir / "Restore.plist"
 
     if system_version_plist.exists():
         metadata = try_read_plist(system_version_plist, issues)
+    if metadata is None and system_version_plist_nested.exists():
+        metadata = try_read_plist(system_version_plist_nested, issues)
     if metadata is None and restore_plist.exists():
         metadata = try_read_plist(restore_plist, issues)
 
