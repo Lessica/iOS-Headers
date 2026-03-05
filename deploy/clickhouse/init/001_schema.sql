@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
     owner_name String,
     symbol_type LowCardinality(String),
     symbol_key String,
-    version_bitmap AggregateFunction(groupBitOr, UInt64),
+    version_bitmap AggregateFunction(groupBitmapState, UInt64),
     updated_at SimpleAggregateFunction(max, DateTime) DEFAULT now()
 )
 ENGINE = AggregatingMergeTree()

@@ -11,11 +11,11 @@
 -- multiple bundles.  ReplacingMergeTree would keep only the last-written row per
 -- key, silently discarding the version bits from all other bundles.
 --
--- FIX: Switch to AggregatingMergeTree with AggregateFunction(groupBitOr, UInt64).
--- Each insert covers exactly ONE version_num, producing at most one small
--- partial-state row per (path, symbol) pair.  ClickHouse merges these states
--- lazily in the background (and eagerly on SELECT ... FINAL), so the correct
--- combined bitmap is always available without ever running a cross-version join.
+-- FIX: Switch to AggregatingMergeTree with AggregateFunction(groupBitmapState, UInt64).
+-- Each insert covers exactly ONE version_num, storing it as an element in a
+-- RoaringBitmap via groupBitmapState.  ClickHouse merges these states lazily in
+-- the background (and eagerly on SELECT ... FINAL), so the correct combined bitmap
+-- is always available without ever running a cross-version join.
 --
 -- HOW TO RUN (existing installations only — new installs use 001_schema.sql):
 --   1. Connect to ClickHouse:
@@ -27,10 +27,10 @@
 --        python3 scripts/build_symbol_presence_v2.py --truncate-first
 --
 -- NOTE: Readers that previously queried `version_bitmap` as a plain UInt64 must
--- now use `groupBitOrMerge(version_bitmap)` together with a GROUP BY to get the
+-- now use `groupBitmapMerge(version_bitmap)` together with a GROUP BY to get the
 -- correctly merged bitmap value.  Example:
 --   SELECT path_id, owner_name, symbol_type, symbol_key,
---          groupBitOrMerge(version_bitmap) AS version_bitmap,
+--          groupBitmapMerge(version_bitmap) AS version_bitmap,
 --          max(updated_at) AS updated_at
 --   FROM symbol_presence
 --   GROUP BY path_id, owner_name, symbol_type, symbol_key;
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
     owner_name String,
     symbol_type LowCardinality(String),
     symbol_key String,
-    version_bitmap AggregateFunction(groupBitOr, UInt64),
+    version_bitmap AggregateFunction(groupBitmapState, UInt64),
     updated_at SimpleAggregateFunction(max, DateTime) DEFAULT now()
 )
 ENGINE = AggregatingMergeTree()

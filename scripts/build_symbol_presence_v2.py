@@ -82,11 +82,11 @@ def _get_version_nums(
 
 
 def _version_insert_sql(version_num: int) -> str:
-    # symbol_presence uses AggregatingMergeTree with AggregateFunction(groupBitOr, UInt64).
+    # symbol_presence uses AggregatingMergeTree with AggregateFunction(groupBitmapState, UInt64).
     # Inserting one version at a time keeps each query small (no cross-version JOIN) and
     # lets ClickHouse merge partial aggregate states lazily in the background.
-    # NOTE: version_num must be in the range [1, 64] because the bitmap is a UInt64;
-    # bits 0-63 correspond to version_nums 1-64 respectively.
+    # version_num is stored directly as an element of the RoaringBitmap; there is no
+    # upper bound on version_num beyond the UInt64 maximum.
     return f"""
     INSERT INTO symbol_presence
     (path_id, owner_name, symbol_type, symbol_key, version_bitmap, updated_at)
@@ -95,7 +95,7 @@ def _version_insert_sql(version_num: int) -> str:
         s.owner_name,
         s.symbol_type,
         s.symbol_key,
-        groupBitOrState(bitShiftLeft(toUInt64(1), toUInt64(fi.version_num - 1))),
+        groupBitmapState(toUInt64(fi.version_num)),
         now()
     FROM symbols AS s
     INNER JOIN file_instances AS fi ON fi.content_id = s.content_id
