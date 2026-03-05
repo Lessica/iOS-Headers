@@ -37,9 +37,17 @@
 - 重建表结构：`zsh scripts/deploy_local_stack.zsh init-db`
 
 默认进度刷新频率可在 `deploy/.env` 中统一配置：
-- `PROGRESS_EVERY=1000`
+- `PROGRESS_EVERY=5000`
 - 作用于 `import_headers_v2.zsh`、`build_symbol_presence_v2.zsh`、`verify_import_integrity_v2.zsh`
 - 如命令行显式传入 `--progress-every`，会覆盖该默认值
+
+默认导入参数（已按大规模场景优化）：
+- `workers=12`
+- `batch-size=30000`
+- `max-retries=5`
+- `retry-sleep=2`
+- `pack-shards=64`
+- `pack-target-bytes=134217728`（128MiB）
 
 ## v2 导入流程（无去重）
 
@@ -64,7 +72,9 @@
 ### 导入行为
 
 - 导入会将元数据/符号写入 ClickHouse。
-- 导入会将头文件正文上传到 MinIO。
+- 导入会将头文件正文按“哈希分片 + 滚动大包”写入 MinIO，避免海量小对象。
+- `contents` 中通过 `pack_object_key + pack_offset + pack_length` 定位正文片段。
+- 分片与包大小可调：`--pack-shards`（默认 256）、`--pack-target-bytes`（默认 64MiB）。
 - 导入会对 `versions(version_num, version_id)` 与 `paths(path_id)` 做增量唯一写入，避免分批导入造成重复项。
 - 默认禁止导入“老于当前库最新版本”的新版本（避免破坏增量语义）。
 - 如需强制导入老版本，显式添加参数：`--allow-old-versions`。

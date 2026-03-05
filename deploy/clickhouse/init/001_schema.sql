@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS ios_headers.contents (
     content_id UInt64,
     content_hash FixedString(32),
     blob_key String,
+    pack_object_key String,
+    pack_offset UInt64,
+    pack_length UInt32,
     byte_size UInt32,
     created_at DateTime DEFAULT now()
 )

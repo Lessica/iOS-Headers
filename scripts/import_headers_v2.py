@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import plistlib
+import random
 import re
 import sys
 import time
@@ -168,6 +169,76 @@ class MinioUploader:
         raise RuntimeError(f"MinIO upload failed: {self.bucket}/{object_name}") from last_exc
 
 
+class PackedMinioWriter:
+    def __init__(
+        self,
+        uploader: MinioUploader,
+        *,
+        minio_prefix: str,
+        shards: int,
+        target_bytes: int,
+        retries: int,
+        retry_sleep: float,
+    ) -> None:
+        self.uploader = uploader
+        self.minio_prefix = minio_prefix.strip("/")
+        self.shards = max(1, shards)
+        self.target_bytes = max(1, target_bytes)
+        self.retries = retries
+        self.retry_sleep = retry_sleep
+        self.buffers: dict[int, bytearray] = {}
+        self.object_keys: dict[int, str] = {}
+        self.sequence: dict[int, int] = {}
+
+    def _next_object_key(self, shard_id: int) -> str:
+        current = self.sequence.get(shard_id, 0) + 1
+        self.sequence[shard_id] = current
+        suffix = random.randint(0, 0xFFFFFF)
+        base = f"packs/s{shard_id:03d}/p{current:09d}-{suffix:06x}.bin"
+        return f"{self.minio_prefix}/{base}".lstrip("/") if self.minio_prefix else base
+
+    def _ensure_shard_open(self, shard_id: int) -> None:
+        if shard_id not in self.buffers:
+            self.buffers[shard_id] = bytearray()
+            self.object_keys[shard_id] = self._next_object_key(shard_id)
+
+    def _flush_shard(self, shard_id: int) -> None:
+        buffer = self.buffers.get(shard_id)
+        if buffer is None or len(buffer) == 0:
+            return
+        object_key = self.object_keys[shard_id]
+        self.uploader.upload_bytes(
+            object_key,
+            bytes(buffer),
+            retries=self.retries,
+            retry_sleep=self.retry_sleep,
+        )
+        self.buffers[shard_id] = bytearray()
+        self.object_keys[shard_id] = self._next_object_key(shard_id)
+
+    def add(self, shard_seed: str, payload: bytes) -> tuple[str, int, int]:
+        digest = hashlib.blake2b(shard_seed.encode("utf-8"), digest_size=8).digest()
+        shard_id = int.from_bytes(digest, "big") % self.shards
+        self._ensure_shard_open(shard_id)
+
+        if len(self.buffers[shard_id]) > 0 and len(self.buffers[shard_id]) + len(payload) > self.target_bytes:
+            self._flush_shard(shard_id)
+
+        offset = len(self.buffers[shard_id])
+        self.buffers[shard_id].extend(payload)
+        object_key = self.object_keys[shard_id]
+        length = len(payload)
+
+        if len(self.buffers[shard_id]) >= self.target_bytes:
+            self._flush_shard(shard_id)
+
+        return (object_key, offset, length)
+
+    def flush_all(self) -> None:
+        for shard_id in list(self.buffers.keys()):
+            self._flush_shard(shard_id)
+
+
 def _escape_tsv(value: Any) -> str:
     if value is None:
         return "\\N"
@@ -188,10 +259,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clickhouse-db", default="ios_headers")
     parser.add_argument("--clickhouse-user", default="default")
     parser.add_argument("--clickhouse-password", default="")
-    parser.add_argument("--batch-size", type=int, default=1000)
-    parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--max-retries", type=int, default=3)
-    parser.add_argument("--retry-sleep", type=float, default=1.0)
+    parser.add_argument("--batch-size", type=int, default=30000)
+    parser.add_argument("--workers", type=int, default=12)
+    parser.add_argument("--max-retries", type=int, default=5)
+    parser.add_argument("--retry-sleep", type=float, default=2.0)
     parser.add_argument("--minio-endpoint", default="127.0.0.1:19001")
     parser.add_argument("--minio-access-key", default="minioadmin")
     parser.add_argument("--minio-secret-key", default="minioadmin")
@@ -199,12 +270,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--minio-prefix", default="")
     parser.add_argument("--minio-secure", action="store_true")
     parser.add_argument("--skip-minio-upload", action="store_true")
+    parser.add_argument("--pack-shards", type=int, default=64)
+    parser.add_argument("--pack-target-bytes", type=int, default=134217728)
     parser.add_argument("--max-files", type=int, default=0)
     parser.add_argument("--bundle", action="append", default=[])
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--truncate-all", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
-    parser.add_argument("--progress-every", type=int, default=1000)
+    parser.add_argument("--progress-every", type=int, default=5000)
     parser.add_argument(
         "--allow-old-versions",
         action="store_true",
@@ -557,6 +630,7 @@ def parse_file_task(file_path: Path) -> tuple[str, int, list[ParsedSymbol], byte
 def import_bundle(
     ch: ClickHouseClient,
     uploader: MinioUploader | None,
+    packer: PackedMinioWriter | None,
     version: VersionInfo,
     headers_root: Path,
     state: dict[str, Any],
@@ -586,6 +660,9 @@ def import_bundle(
     bundle_start_ts = time.time()
 
     def flush_batches() -> None:
+        if packer is not None:
+            packer.flush_all()
+
         if contents_rows:
             ch.insert_tsv(
                 "contents",
@@ -593,6 +670,9 @@ def import_bundle(
                     "content_id",
                     "content_hash",
                     "blob_key",
+                    "pack_object_key",
+                    "pack_offset",
+                    "pack_length",
                     "byte_size",
                 ],
                 contents_rows,
@@ -652,16 +732,24 @@ def import_bundle(
                 content_id = content_id_for(version.version_id, absolute_path)
                 blob_key = f"{version.bundle_name}{absolute_path}"
                 object_name = f"{args.minio_prefix.strip('/')}/{blob_key.lstrip('/')}".lstrip("/")
+                if uploader is not None and packer is not None:
+                    pack_object_key, pack_offset, pack_length = packer.add(object_name, raw_bytes)
+                else:
+                    pack_object_key = object_name
+                    pack_offset = 0
+                    pack_length = len(raw_bytes)
 
-                if uploader is not None:
-                    uploader.upload_bytes(
-                        object_name,
-                        raw_bytes,
-                        retries=args.max_retries,
-                        retry_sleep=args.retry_sleep,
+                contents_rows.append(
+                    (
+                        content_id,
+                        text_md5,
+                        blob_key,
+                        pack_object_key,
+                        pack_offset,
+                        pack_length,
+                        byte_size,
                     )
-
-                contents_rows.append((content_id, text_md5, blob_key, byte_size))
+                )
                 file_instance_rows.append(
                     (
                         version.version_num,
@@ -893,6 +981,7 @@ def main() -> None:
     state = load_state(args.state_file)
 
     uploader: MinioUploader | None = None
+    packer: PackedMinioWriter | None = None
     if args.skip_minio_upload:
         print("[setup] skip MinIO upload enabled")
     else:
@@ -904,6 +993,17 @@ def main() -> None:
             secure=args.minio_secure,
         )
         print(f"[setup] MinIO uploader ready: bucket={args.minio_bucket} endpoint={args.minio_endpoint}")
+        packer = PackedMinioWriter(
+            uploader,
+            minio_prefix=args.minio_prefix,
+            shards=args.pack_shards,
+            target_bytes=args.pack_target_bytes,
+            retries=args.max_retries,
+            retry_sleep=args.retry_sleep,
+        )
+        print(
+            f"[setup] packed object mode enabled: shards={args.pack_shards} target_bytes={args.pack_target_bytes}"
+        )
 
     if args.truncate_all and args.resume:
         raise SystemExit("--truncate-all and --resume cannot be used together")
@@ -926,6 +1026,7 @@ def main() -> None:
         files_count, symbols_count = import_bundle(
             ch,
             uploader,
+            packer,
             version,
             args.headers_root,
             state,

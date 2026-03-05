@@ -156,13 +156,21 @@ def _verify_scope(
 ) -> dict[str, Any]:
     contents_filter_sql = _build_contents_filter(bundles)
 
-    count_sql = f"SELECT count() FROM contents {contents_filter_sql}"
-    ch_count_text = ch.execute(
+    count_sql = f"SELECT uniqExact(pack_object_key) FROM contents {contents_filter_sql}"
+    ch_pack_count_text = ch.execute(
         count_sql,
         retries=max_retries,
         retry_sleep=retry_sleep,
     ).strip()
-    ch_count = int(ch_count_text or "0")
+    ch_pack_count = int(ch_pack_count_text or "0")
+
+    content_rows_sql = f"SELECT count() FROM contents {contents_filter_sql}"
+    content_rows_text = ch.execute(
+        content_rows_sql,
+        retries=max_retries,
+        retry_sleep=retry_sleep,
+    ).strip()
+    content_rows = int(content_rows_text or "0")
 
     minio_count = mc.count_objects(
         prefix=minio_prefix,
@@ -171,8 +179,9 @@ def _verify_scope(
     )
 
     result: dict[str, Any] = {
-        "ok": ch_count == minio_count,
-        "clickhouse_contents": ch_count,
+        "ok": ch_pack_count == minio_count,
+        "clickhouse_contents": content_rows,
+        "clickhouse_pack_objects": ch_pack_count,
         "minio_objects": minio_count,
         "bundle_filter": bundles,
         "minio_prefix": minio_prefix,
@@ -180,7 +189,10 @@ def _verify_scope(
     }
 
     if sample_check > 0:
-        sample_sql = f"SELECT blob_key FROM contents {contents_filter_sql} ORDER BY blob_key LIMIT {sample_check}"
+        sample_sql = (
+            f"SELECT DISTINCT pack_object_key FROM contents {contents_filter_sql} "
+            f"ORDER BY pack_object_key LIMIT {sample_check}"
+        )
         rows = ch.execute(
             sample_sql,
             retries=max_retries,
@@ -191,10 +203,10 @@ def _verify_scope(
         sample_start = time.time()
 
         for row in rows:
-            blob_key = row.strip()
-            if not blob_key:
+            pack_object_key = row.strip()
+            if not pack_object_key:
                 continue
-            object_name = blob_key.lstrip("/")
+            object_name = pack_object_key.lstrip("/")
             exists = mc.object_exists(object_name)
             checked += 1
             if not exists:
