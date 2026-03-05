@@ -95,7 +95,7 @@ def _version_insert_sql(version_num: int) -> str:
         s.owner_name,
         s.symbol_type,
         s.symbol_key,
-        groupBitOrState(bitShiftLeft(toUInt64(1), fi.version_num - 1)),
+        groupBitOrState(bitShiftLeft(toUInt64(1), toUInt64(fi.version_num - 1))),
         now()
     FROM symbols AS s
     INNER JOIN file_instances AS fi ON fi.content_id = s.content_id
