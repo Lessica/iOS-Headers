@@ -37,9 +37,7 @@ class VersionInfo:
     version_id: str
     ios_version: str
     build: str
-    label: str
     bundle_name: str
-    ord: int
 
 
 @dataclass(frozen=True)
@@ -294,15 +292,12 @@ def build_version_info(bundle_name: str, files_root: Path, issues: list[Issue]) 
 
     build = str(metadata.get("ProductBuildVersion", fallback_build))
     version_id = f"{ios_version}|{build}"
-    ord_num = int("".join(str(item).zfill(3) for item in parse_version_tuple(ios_version)[:3]).lstrip("0") or "0")
     return VersionInfo(
         version_num=0,
         version_id=version_id,
         ios_version=ios_version,
         build=build,
-        label=f"iOS {ios_version} ({build})",
         bundle_name=bundle_name,
-        ord=ord_num,
     )
 
 
@@ -475,9 +470,7 @@ def build_versions(headers_root: Path, files_root: Path, bundles: list[str]) -> 
                 version_id=item.version_id,
                 ios_version=item.ios_version,
                 build=item.build,
-                label=item.label,
                 bundle_name=item.bundle_name,
-                ord=item.ord,
             )
         )
 
@@ -487,12 +480,11 @@ def build_versions(headers_root: Path, files_root: Path, bundles: list[str]) -> 
     return assigned
 
 
-def parse_file_task(file_path: Path) -> tuple[str, int, list[ParsedSymbol], bytes, int]:
+def parse_file_task(file_path: Path) -> tuple[str, int, list[ParsedSymbol], bytes]:
     raw_bytes = file_path.read_bytes()
     text_md5 = hashlib.md5(raw_bytes).hexdigest()
-    line_count = raw_bytes.count(b"\n") + 1
     symbols = parse_header_symbols(file_path)
-    return (text_md5, len(raw_bytes), symbols, raw_bytes, line_count)
+    return (text_md5, len(raw_bytes), symbols, raw_bytes)
 
 
 def import_bundle(
@@ -535,8 +527,6 @@ def import_bundle(
                     "content_hash",
                     "blob_key",
                     "byte_size",
-                    "line_count",
-                    "parsed_ok",
                 ],
                 contents_rows,
                 retries=args.max_retries,
@@ -547,7 +537,7 @@ def import_bundle(
         if file_instance_rows:
             ch.insert_tsv(
                 "file_instances",
-                ["version_num", "version_id", "path_id", "content_id", "updated_at"],
+                ["version_num", "path_id", "content_id", "updated_at"],
                 file_instance_rows,
                 retries=args.max_retries,
                 retry_sleep=args.retry_sleep,
@@ -581,7 +571,7 @@ def import_bundle(
             for chunk_index, (current_file, future) in enumerate(zip(chunk_files, futures)):
                 offset = start_index + chunk_base + chunk_index
                 try:
-                    text_md5, byte_size, parsed_symbols, raw_bytes, line_count = future.result()
+                    text_md5, byte_size, parsed_symbols, raw_bytes = future.result()
                 except Exception as exc:
                     if not args.continue_on_error:
                         raise
@@ -604,11 +594,10 @@ def import_bundle(
                         retry_sleep=args.retry_sleep,
                     )
 
-                contents_rows.append((content_id, text_md5, blob_key, byte_size, line_count, 1))
+                contents_rows.append((content_id, text_md5, blob_key, byte_size))
                 file_instance_rows.append(
                     (
                         version.version_num,
-                        version.version_id,
                         path_id,
                         content_id,
                         datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
@@ -740,8 +729,6 @@ def ensure_versions_and_paths(
             item.version_id,
             item.ios_version,
             item.build,
-            item.ord,
-            item.label,
             item.bundle_name,
             datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         )
@@ -756,8 +743,6 @@ def ensure_versions_and_paths(
                 "version_id",
                 "ios_version",
                 "build",
-                "ord",
-                "label",
                 "bundle_name",
                 "created_at",
             ],

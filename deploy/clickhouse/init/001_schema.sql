@@ -5,13 +5,11 @@ CREATE TABLE IF NOT EXISTS ios_headers.versions (
     version_id String,
     ios_version String,
     build String,
-    ord UInt32,
-    label String,
     bundle_name String,
     created_at DateTime DEFAULT now()
 )
 ENGINE = MergeTree
-ORDER BY (ord, version_num);
+ORDER BY (version_num);
 
 CREATE TABLE IF NOT EXISTS ios_headers.paths (
     path_id UInt64,
@@ -32,8 +30,6 @@ CREATE TABLE IF NOT EXISTS ios_headers.contents (
     content_hash FixedString(32),
     blob_key String,
     byte_size UInt32,
-    line_count UInt32,
-    parsed_ok UInt8,
     created_at DateTime DEFAULT now()
 )
 ENGINE = MergeTree
@@ -41,7 +37,6 @@ ORDER BY (content_id);
 
 CREATE TABLE IF NOT EXISTS ios_headers.file_instances (
     version_num UInt32,
-    version_id String,
     path_id UInt64,
     content_id UInt64,
     updated_at DateTime DEFAULT now()
@@ -68,8 +63,7 @@ CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
     owner_name String,
     symbol_type LowCardinality(String),
     symbol_key String,
-    version_nums Array(UInt32),
-    versions_count UInt16,
+    version_bitmap UInt64,
     updated_at DateTime DEFAULT now()
 )
 ENGINE = ReplacingMergeTree(updated_at)

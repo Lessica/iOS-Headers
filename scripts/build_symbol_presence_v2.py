@@ -61,7 +61,7 @@ def _build_filter_sql(bundles: list[str], version_ids: list[str]) -> str:
     if bundles:
         filters.append("v.bundle_name IN (" + ", ".join(_quote(item) for item in bundles) + ")")
     if version_ids:
-        filters.append("fi.version_id IN (" + ", ".join(_quote(item) for item in version_ids) + ")")
+        filters.append("v.version_id IN (" + ", ".join(_quote(item) for item in version_ids) + ")")
     if not filters:
         return ""
     return "WHERE " + " AND ".join(filters)
@@ -79,14 +79,13 @@ def _get_all_bundles(ch: ClickHouseClient, retries: int, retry_sleep: float) -> 
 def _scope_insert_sql(filter_sql: str) -> str:
     return f"""
     INSERT INTO symbol_presence
-    (path_id, owner_name, symbol_type, symbol_key, version_nums, versions_count, updated_at)
+    (path_id, owner_name, symbol_type, symbol_key, version_bitmap, updated_at)
     SELECT
         fi.path_id,
         s.owner_name,
         s.symbol_type,
         s.symbol_key,
-        arraySort(groupUniqArray(fi.version_num)) AS version_nums,
-        toUInt16(length(version_nums)) AS versions_count,
+        groupBitOr(bitShiftLeft(toUInt64(1), fi.version_num - 1)) AS version_bitmap,
         now() AS updated_at
     FROM symbols AS s
     INNER JOIN file_instances AS fi ON fi.content_id = s.content_id

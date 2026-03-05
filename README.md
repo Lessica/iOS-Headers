@@ -76,6 +76,9 @@
 
 ## 构建符号可用性表
 
+说明：
+- `symbol_presence` 使用 `version_bitmap UInt64` 存储版本可用性位图（按 `version_num` 映射位位置）。
+
 - 全量重建：
   - `zsh scripts/build_symbol_presence_v2.zsh --truncate-first`
 - 指定 bundle：
