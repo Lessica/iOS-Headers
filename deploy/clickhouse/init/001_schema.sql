@@ -1,0 +1,77 @@
+CREATE DATABASE IF NOT EXISTS ios_headers;
+
+CREATE TABLE IF NOT EXISTS ios_headers.versions (
+    version_num UInt32,
+    version_id String,
+    ios_version String,
+    build String,
+    ord UInt32,
+    label String,
+    bundle_name String,
+    created_at DateTime DEFAULT now()
+)
+ENGINE = MergeTree
+ORDER BY (ord, version_num);
+
+CREATE TABLE IF NOT EXISTS ios_headers.paths (
+    path_id UInt64,
+    absolute_path String,
+    path_lc String MATERIALIZED lowerUTF8(absolute_path),
+    created_at DateTime DEFAULT now()
+)
+ENGINE = MergeTree
+ORDER BY (path_id)
+SETTINGS index_granularity = 8192;
+
+CREATE INDEX IF NOT EXISTS idx_paths_bf ON ios_headers.paths (path_lc)
+TYPE tokenbf_v1(32768, 3, 0)
+GRANULARITY 64;
+
+CREATE TABLE IF NOT EXISTS ios_headers.contents (
+    content_id UInt64,
+    content_hash FixedString(32),
+    blob_key String,
+    byte_size UInt32,
+    line_count UInt32,
+    parsed_ok UInt8,
+    created_at DateTime DEFAULT now()
+)
+ENGINE = MergeTree
+ORDER BY (content_id);
+
+CREATE TABLE IF NOT EXISTS ios_headers.file_instances (
+    version_num UInt32,
+    version_id String,
+    path_id UInt64,
+    content_id UInt64,
+    updated_at DateTime DEFAULT now()
+)
+ENGINE = MergeTree
+PARTITION BY version_num
+ORDER BY (path_id, version_num)
+SETTINGS index_granularity = 8192;
+
+CREATE TABLE IF NOT EXISTS ios_headers.symbols (
+    content_id UInt64,
+    owner_kind LowCardinality(String),
+    owner_name String,
+    symbol_type LowCardinality(String),
+    symbol_key String,
+    line_no UInt32
+)
+ENGINE = MergeTree
+ORDER BY (content_id, symbol_type, symbol_key, owner_name)
+SETTINGS index_granularity = 8192;
+
+CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
+    path_id UInt64,
+    owner_name String,
+    symbol_type LowCardinality(String),
+    symbol_key String,
+    version_nums Array(UInt32),
+    versions_count UInt16,
+    updated_at DateTime DEFAULT now()
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (path_id, symbol_type, symbol_key, owner_name)
+SETTINGS index_granularity = 8192;

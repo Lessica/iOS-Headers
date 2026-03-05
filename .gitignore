@@ -5,6 +5,8 @@
 /headers
 /sites/entitlements/data
 /sites/ios-headers/data
+/deploy/data/
+/deploy/.env
 *.dmg
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,macos
