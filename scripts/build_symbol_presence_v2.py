@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import time
-from typing import Any
 from urllib import error, parse, request
 
 
@@ -123,50 +122,21 @@ def main() -> None:
         )
         print("[setup] truncated symbol_presence")
 
-    scopes: list[dict[str, Any]] = []
-    if args.bundle:
-        for item in args.bundle:
-            scopes.append(
-                {
-                    "label": f"bundle={item}",
-                    "filter_sql": _build_filter_sql([item], args.version_id),
-                }
-            )
-    elif args.version_id:
-        for item in args.version_id:
-            scopes.append(
-                {
-                    "label": f"version={item}",
-                    "filter_sql": _build_filter_sql([], [item]),
-                }
-            )
-    else:
-        all_bundles = _get_all_bundles(ch, args.max_retries, args.retry_sleep)
-        for item in all_bundles:
-            scopes.append(
-                {
-                    "label": f"bundle={item}",
-                    "filter_sql": _build_filter_sql([item], []),
-                }
-            )
-
-    if not scopes:
-        raise SystemExit("No scope to process")
-
     start = time.time()
-    total_scopes = len(scopes)
-    for index, scope in enumerate(scopes, start=1):
-        scope_start = time.time()
-        label = str(scope["label"])
-        print(f"[progress] start {index}/{total_scopes} {label}")
-        ch.execute(
-            _scope_insert_sql(str(scope["filter_sql"])),
-            retries=args.max_retries,
-            retry_sleep=args.retry_sleep,
-        )
-        elapsed = time.time() - scope_start
-        if args.progress_every > 0 and (index % args.progress_every == 0 or index == total_scopes):
-            print(f"[progress] done {index}/{total_scopes} {label} elapsed_sec={elapsed:.2f}")
+    print("[progress] stage 1/3 prepare")
+
+    if not args.bundle and not args.version_id:
+        bundles = _get_all_bundles(ch, args.max_retries, args.retry_sleep)
+        print(f"[progress] target bundles={len(bundles)}")
+
+    print("[progress] stage 2/3 aggregate insert")
+    insert_start = time.time()
+    ch.execute(
+        _scope_insert_sql(filter_sql),
+        retries=args.max_retries,
+        retry_sleep=args.retry_sleep,
+    )
+    print(f"[progress] aggregate insert done elapsed_sec={time.time() - insert_start:.2f}")
 
     if filter_sql:
         count_sql = f"""
@@ -183,6 +153,7 @@ def main() -> None:
     else:
         count_sql = "SELECT count() FROM symbol_presence"
 
+    print("[progress] stage 3/3 count rows")
     total = ch.execute(count_sql, retries=args.max_retries, retry_sleep=args.retry_sleep).strip()
     elapsed = round(time.time() - start, 2)
 
