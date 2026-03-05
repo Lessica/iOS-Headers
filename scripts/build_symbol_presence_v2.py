@@ -127,17 +127,32 @@ def main() -> None:
     start = time.time()
     print("[progress] stage 1/3 prepare")
 
-    if not args.bundle and not args.version_id:
-        bundles = _get_all_bundles(ch, args.max_retries, args.retry_sleep)
-        print(f"[progress] target bundles={len(bundles)}")
-
-    print("[progress] stage 2/3 aggregate insert")
     insert_start = time.time()
-    ch.execute(
-        _scope_insert_sql(filter_sql),
-        retries=args.max_retries,
-        retry_sleep=args.retry_sleep,
-    )
+
+    if not filter_sql:
+        # Process one bundle at a time to stay within ClickHouse memory limits.
+        # A single aggregation over all bundles can exceed available RAM when the
+        # dataset is large; splitting by bundle keeps each query's working set small.
+        bundles = _get_all_bundles(ch, args.max_retries, args.retry_sleep)
+        print(f"[progress] stage 2/3 aggregate insert bundles={len(bundles)}")
+        for idx, bundle in enumerate(bundles, 1):
+            bundle_filter = _build_filter_sql([bundle], [])
+            bundle_start = time.time()
+            ch.execute(
+                _scope_insert_sql(bundle_filter),
+                retries=args.max_retries,
+                retry_sleep=args.retry_sleep,
+            )
+            if idx % args.progress_every == 0 or idx == len(bundles):
+                print(f"[progress] bundle {idx}/{len(bundles)} {bundle!r} elapsed_sec={time.time() - bundle_start:.2f}")
+    else:
+        print("[progress] stage 2/3 aggregate insert")
+        ch.execute(
+            _scope_insert_sql(filter_sql),
+            retries=args.max_retries,
+            retry_sleep=args.retry_sleep,
+        )
+
     print(f"[progress] aggregate insert done elapsed_sec={time.time() - insert_start:.2f}")
 
     if filter_sql:
