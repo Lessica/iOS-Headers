@@ -22,6 +22,7 @@ class Settings:
     view_cache_ttl_seconds: int
     search_cache_ttl_seconds: int
     enable_redis_page_cache: bool
+    enable_symbol_matrix: bool
     show_query_elapsed_ms: bool
 
 
@@ -51,5 +52,6 @@ def load_settings() -> Settings:
         view_cache_ttl_seconds=int(os.getenv("VIEW_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 30))),
         search_cache_ttl_seconds=int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "300")),
         enable_redis_page_cache=_as_bool(os.getenv("ENABLE_REDIS_PAGE_CACHE"), False),
+        enable_symbol_matrix=_as_bool(os.getenv("ENABLE_SYMBOL_MATRIX"), False),
         show_query_elapsed_ms=_as_bool(os.getenv("SHOW_QUERY_ELAPSED_MS"), False),
     )

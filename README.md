@@ -134,6 +134,7 @@
 - 查看页按需渲染并将最终 HTML 写入 Redis 缓存
 - 搜索页按查询参数缓存 SSR HTML
 - 可通过 `.env` 控制页面缓存开关：`ENABLE_REDIS_PAGE_CACHE=true|false`
+- 可通过 `.env` 控制 Symbol Matrix 开关：`ENABLE_SYMBOL_MATRIX=true|false`
 - 可通过 `.env` 控制 Query 耗时显示：`SHOW_QUERY_ELAPSED_MS=true|false`
 - 全站为纯 SSR，不依赖任何前端 JavaScript
 

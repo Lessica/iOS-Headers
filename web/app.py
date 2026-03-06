@@ -269,7 +269,11 @@ def view_header(version_id: str, absolute_path: str) -> str:
         abort(404)
     timings_ms["resolve_content_ref"] = int((time.perf_counter() - segment_started_at) * 1000)
 
-    cache_key = _view_cache_key(version_num=content_ref.version_num, path_id=content_ref.path_id)
+    cache_key = _view_cache_key(
+        version_num=content_ref.version_num,
+        path_id=content_ref.path_id,
+        enable_symbol_matrix=settings.enable_symbol_matrix,
+    )
     if settings.enable_redis_page_cache:
         segment_started_at = time.perf_counter()
         cached_html = cache.get_text(cache_key)
@@ -298,13 +302,19 @@ def view_header(version_id: str, absolute_path: str) -> str:
     versions = repo.list_versions_for_path(content_ref.path_id)
     timings_ms["query_versions_for_path"] = int((time.perf_counter() - segment_started_at) * 1000)
 
-    segment_started_at = time.perf_counter()
-    symbols = repo.list_symbols_for_content(content_ref.content_id)
-    timings_ms["query_symbols_for_content"] = int((time.perf_counter() - segment_started_at) * 1000)
+    symbols: list[tuple[str, str, str, int]] = []
+    presence_map: dict[tuple[str, str, str], set[int]] = {}
+    if settings.enable_symbol_matrix:
+        segment_started_at = time.perf_counter()
+        symbols = repo.list_symbols_for_content(content_ref.content_id)
+        timings_ms["query_symbols_for_content"] = int((time.perf_counter() - segment_started_at) * 1000)
 
-    segment_started_at = time.perf_counter()
-    presence_map = repo.get_symbol_presence_map(content_ref.path_id)
-    timings_ms["query_symbol_presence_map"] = int((time.perf_counter() - segment_started_at) * 1000)
+        segment_started_at = time.perf_counter()
+        presence_map = repo.get_symbol_presence_map(content_ref.path_id)
+        timings_ms["query_symbol_presence_map"] = int((time.perf_counter() - segment_started_at) * 1000)
+    else:
+        timings_ms["query_symbols_for_content"] = 0
+        timings_ms["query_symbol_presence_map"] = 0
 
     segment_started_at = time.perf_counter()
     same_directory = os.path.dirname(content_ref.absolute_path)
@@ -334,6 +344,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
         rendered_source_html=model.rendered_source_html,
         line_count=len(model.source_text.splitlines()),
         file_size_text=_format_bytes_for_display(model.ref.pack_length),
+        enable_symbol_matrix=settings.enable_symbol_matrix,
         availability_rows=model.availability_rows,
         source_line_availability=model.source_line_availability,
         query_elapsed_ms=query_elapsed_ms,
@@ -572,8 +583,9 @@ def _format_bytes_for_display(size_bytes: int | None) -> str:
     return f"{size:.1f} {units[unit_index]}"
 
 
-def _view_cache_key(version_num: int, path_id: int) -> str:
-    return f"html:view:vnum:{version_num}:pid:{path_id}"
+def _view_cache_key(version_num: int, path_id: int, enable_symbol_matrix: bool) -> str:
+    matrix_flag = "1" if enable_symbol_matrix else "0"
+    return f"html:view:vnum:{version_num}:pid:{path_id}:sm:{matrix_flag}"
 
 
 def _search_cache_key(

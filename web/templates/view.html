@@ -23,21 +23,19 @@
     {% include "_partials/version_switch.html" %}
   </section>
 
-  <section class="panel stack-3">
-    <h2 class="title-lg">Source</h2>
-    <div class="code-block"><code id="source-code" class="language-objectivec">{{ rendered_source_html|safe }}</code></div>
-  </section>
+  <div class="code-block"><code id="source-code" class="language-objectivec">{{ rendered_source_html|safe }}</code></div>
 
+  {% if enable_symbol_matrix %}
   <details class="panel stack-3 matrix-collapsible">
     <summary class="title-lg matrix-summary">Symbol Matrix</summary>
     {% include "_partials/availability_table.html" %}
   </details>
+  {% endif %}
 </div>
-<script src="{{ url_for('static', filename='vendor/prism/prism-core.min.js') }}"></script>
-<script src="{{ url_for('static', filename='vendor/prism/prism-clike.min.js') }}"></script>
-<script src="{{ url_for('static', filename='vendor/prism/prism-c.min.js') }}"></script>
-<script src="{{ url_for('static', filename='vendor/prism/prism-objectivec.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/prism/prism.bundle.min.js') }}"></script>
+{% if enable_symbol_matrix %}
 <script id="source-line-availability" type="application/json">{{ source_line_availability | tojson }}</script>
+{% endif %}
 <script>
   (() => {
     const sourceCode = document.getElementById('source-code');
