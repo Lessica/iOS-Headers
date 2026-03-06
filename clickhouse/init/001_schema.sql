@@ -35,6 +35,10 @@ CREATE INDEX IF NOT EXISTS idx_paths_file_name_bf ON ios_headers.paths (file_nam
 TYPE tokenbf_v1(32768, 3, 0)
 GRANULARITY 64;
 
+CREATE INDEX IF NOT EXISTS idx_paths_file_name_ngram ON ios_headers.paths (file_name_lc)
+TYPE ngrambf_v1(3, 32768, 3, 0)
+GRANULARITY 64;
+
 CREATE INDEX IF NOT EXISTS idx_paths_dir_name_bf ON ios_headers.paths (dir_name_lc)
 TYPE tokenbf_v1(32768, 3, 0)
 GRANULARITY 64;
@@ -67,6 +71,7 @@ CREATE TABLE IF NOT EXISTS ios_headers.symbols (
     content_id UInt64,
     owner_kind LowCardinality(String),
     owner_name String,
+    owner_name_lc String MATERIALIZED lowerUTF8(owner_name),
     symbol_type LowCardinality(String),
     symbol_key String,
     line_no UInt32
@@ -74,6 +79,10 @@ CREATE TABLE IF NOT EXISTS ios_headers.symbols (
 ENGINE = MergeTree
 ORDER BY (content_id, symbol_type, symbol_key, owner_name)
 SETTINGS index_granularity = 8192;
+
+CREATE INDEX IF NOT EXISTS idx_symbols_owner_name_ngram ON ios_headers.symbols (owner_name_lc)
+TYPE ngrambf_v1(3, 32768, 3, 0)
+GRANULARITY 64;
 
 CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
     path_id UInt64,

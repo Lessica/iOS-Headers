@@ -184,7 +184,7 @@ class Repository:
                     INNER JOIN paths p ON p.path_id = fi.path_id
                     INNER JOIN versions v ON v.version_num = fi.version_num
                     WHERE p.file_name_lc = keyword_lc
-                       OR positionCaseInsensitiveUTF8(p.file_name, %(keyword)s) > 0
+                              OR positionUTF8(p.file_name_lc, keyword_lc) > 0
 
                     UNION ALL
 
@@ -195,19 +195,19 @@ class Repository:
                         p.absolute_path AS absolute_path,
                         min(
                             multiIf(
-                                lowerUTF8(s.owner_name) = keyword_lc AND (
-                                    lowerUTF8(s.owner_kind) = 'category'
+                                s.owner_name_lc = keyword_lc AND (
+                                    s.owner_kind = 'category'
                                     OR p.is_category_file = 1
                                 ), 3,
-                                lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'interface', 1,
-                                lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'protocol', 2,
-                                lowerUTF8(s.owner_name) = keyword_lc, 4,
-                                positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND (
-                                    lowerUTF8(s.owner_kind) = 'category'
+                                s.owner_name_lc = keyword_lc AND s.owner_kind = 'interface', 1,
+                                s.owner_name_lc = keyword_lc AND s.owner_kind = 'protocol', 2,
+                                s.owner_name_lc = keyword_lc, 4,
+                                positionUTF8(s.owner_name_lc, keyword_lc) > 0 AND (
+                                    s.owner_kind = 'category'
                                     OR p.is_category_file = 1
                                 ), 13,
-                                positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'interface', 11,
-                                positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'protocol', 12,
+                                positionUTF8(s.owner_name_lc, keyword_lc) > 0 AND s.owner_kind = 'interface', 11,
+                                positionUTF8(s.owner_name_lc, keyword_lc) > 0 AND s.owner_kind = 'protocol', 12,
                                 14
                             )
                         ) AS priority_rank
@@ -215,8 +215,8 @@ class Repository:
                     INNER JOIN file_instances fi ON fi.content_id = s.content_id
                     INNER JOIN paths p ON p.path_id = fi.path_id
                     INNER JOIN versions v ON v.version_num = fi.version_num
-                    WHERE lowerUTF8(s.owner_name) = keyword_lc
-                       OR positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0
+                          WHERE s.owner_name_lc = keyword_lc
+                              OR positionUTF8(s.owner_name_lc, keyword_lc) > 0
                     GROUP BY fi.version_num, v.version_id, p.path_id, p.absolute_path
                 ) AS owner_matches
                 GROUP BY path_id
