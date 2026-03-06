@@ -61,7 +61,7 @@ ensure_minio_bucket() {
   minio_root_password="$(get_env_value "MINIO_ROOT_PASSWORD" "minioadmin")"
   minio_bucket="$(get_env_value "MINIO_BUCKET" "ios-headers")"
 
-  docker run --rm --network "$network_name" minio/mc:latest /bin/sh -c \
+  docker run --rm --network "$network_name" --entrypoint /bin/sh minio/mc:latest -c \
     "mc alias set local http://minio:9000 '$minio_root_user' '$minio_root_password' && \
     (mc mb -p local/'$minio_bucket' || true) && \
     mc anonymous set download local/'$minio_bucket' && \
