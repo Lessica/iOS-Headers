@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/clickhouse/init/001_schema.sql" dialect="ClickHouse" />
     <file url="file://$PROJECT_DIR$/clickhouse/migrations/step1_owner_filename_search.sql" dialect="ClickHouse" />
+    <file url="file://$PROJECT_DIR$/clickhouse/migrations/step2_symbol_presence_redundant_columns.sql" dialect="ClickHouse" />
+    <file url="PROJECT" dialect="ClickHouse" />
   </component>
 </project>
