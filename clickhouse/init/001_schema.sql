@@ -27,13 +27,6 @@ ENGINE = MergeTree
 ORDER BY (path_id)
 SETTINGS index_granularity = 8192;
 
-ALTER TABLE ios_headers.paths ADD COLUMN IF NOT EXISTS file_name String MATERIALIZED extract(absolute_path, '[^/]+$');
-ALTER TABLE ios_headers.paths ADD COLUMN IF NOT EXISTS file_name_lc String MATERIALIZED lowerUTF8(file_name);
-ALTER TABLE ios_headers.paths ADD COLUMN IF NOT EXISTS dir_path String MATERIALIZED replaceRegexpOne(absolute_path, '/[^/]+$', '');
-ALTER TABLE ios_headers.paths ADD COLUMN IF NOT EXISTS dir_name String MATERIALIZED extract(dir_path, '[^/]+$');
-ALTER TABLE ios_headers.paths ADD COLUMN IF NOT EXISTS dir_name_lc String MATERIALIZED lowerUTF8(dir_name);
-ALTER TABLE ios_headers.paths ADD COLUMN IF NOT EXISTS is_category_file UInt8 MATERIALIZED toUInt8(positionUTF8(file_name, '+') > 0);
-
 CREATE INDEX IF NOT EXISTS idx_paths_bf ON ios_headers.paths (path_lc)
 TYPE tokenbf_v1(32768, 3, 0)
 GRANULARITY 64;
