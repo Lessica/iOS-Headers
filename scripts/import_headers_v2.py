@@ -286,7 +286,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--truncate-all", action="store_true")
     parser.add_argument("--continue-on-error", action="store_true")
-    parser.add_argument("--progress-every", type=int, default=5000)
+    parser.add_argument("--progress-every", type=int, default=100)
     parser.add_argument(
         "--allow-old-versions",
         action="store_true",
@@ -314,6 +314,10 @@ def _print_progress(prefix: str, done: int, total: int, start_ts: float) -> None
         f"[progress] {prefix}: {done}/{total} ({ratio * 100:.2f}%) "
         f"rate={rate:.2f} files/s eta={_format_duration(eta)} elapsed={_format_duration(elapsed)}"
     )
+
+
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def parse_version_tuple(version: str) -> tuple[int, ...]:
@@ -764,7 +768,7 @@ def import_bundle(
                         version.version_num,
                         path_id,
                         content_id,
-                        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                        _utc_now_naive(),
                     )
                 )
 
@@ -894,7 +898,7 @@ def ensure_versions_and_paths(
             item.ios_version,
             item.build,
             item.bundle_name,
-            datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            _utc_now_naive(),
         )
         for item in versions
         if (item.version_num, item.version_id) not in existing_versions
@@ -925,7 +929,7 @@ def ensure_versions_and_paths(
         for header_file in files:
             absolute_path = to_absolute_path(header_file.relative_to(bundle_root).as_posix())
             path_id = content_id_for("path", absolute_path)
-            path_rows.append((path_id, absolute_path, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
+            path_rows.append((path_id, absolute_path, _utc_now_naive()))
             scanned += 1
 
             if args.progress_every > 0 and scanned % args.progress_every == 0:

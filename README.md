@@ -28,11 +28,6 @@
 - 重建表结构：`scripts/deploy_local_stack.zsh init-db`
 - 初始化 MinIO bucket：`scripts/deploy_local_stack.zsh init-minio`
 
-默认进度刷新频率可在 `.env` 中统一配置：
-- `PROGRESS_EVERY=1000`
-- 作用于 `import_headers_v2.zsh`、`build_symbol_presence_v2.zsh`、`verify_import_integrity_v2.zsh`
-- 如命令行显式传入 `--progress-every`，会覆盖该默认值
-
 默认导入参数（已按大规模场景优化）：
 - `workers=12`
 - `batch-size=30000`
@@ -90,29 +85,10 @@
 - 显示阶段进度：
   - `scripts/build_symbol_presence_v2.zsh --truncate-first --progress-every 1`
 
-## 导入完整性核对
-
-- 全量核对：
-  - `scripts/verify_import_integrity_v2.zsh`
-- 单 bundle 核对：
-  - `scripts/verify_import_integrity_v2.zsh --bundle 19C56__iPhone11,2_4_6_iPhone12,3_5`
-- 抽样对象存在性核对：
-  - `scripts/verify_import_integrity_v2.zsh --bundle 19C56__iPhone11,2_4_6_iPhone12,3_5 --sample-check 50`
-- 巡检模式（遍历所有 bundle）：
-  - `scripts/verify_import_integrity_v2.zsh --inspect-all-bundles`
-- 巡检 + 每 bundle 抽样：
-  - `scripts/verify_import_integrity_v2.zsh --inspect-all-bundles --sample-check 20`
-
-核对退出码：
-
-- `0`：通过
-- `2`：发现不一致（数量不匹配或抽样缺失）
-
 ## 推荐执行顺序
 
 1. `scripts/import_headers_v2.zsh ...`
 2. `scripts/build_symbol_presence_v2.zsh --truncate-first`
-3. `scripts/verify_import_integrity_v2.zsh --inspect-all-bundles`
 
 ## 端点
 
