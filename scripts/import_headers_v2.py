@@ -456,17 +456,20 @@ def parse_owner_from_interface(line: str) -> tuple[str, str] | None:
     return None
 
 
-def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
+def parse_header_symbols(path: Path) -> list[ParsedSymbol] | None:
     symbols: list[ParsedSymbol] = []
     owner_kind: str | None = None
     owner_name: str | None = None
     in_ivar_block = False
 
-    def require_owner(symbol_type: str, line_no: int) -> tuple[str, str]:
+    def require_owner(symbol_type: str, line_no: int) -> tuple[str, str] | None:
         if owner_kind not in OWNER_KINDS or owner_name is None or not owner_name.strip():
-            raise ValueError(
-                f"Unable to determine owner for symbol: file={path} line={line_no} symbol_type={symbol_type}"
+            print(
+                f"[warn] skip file due to unknown symbol owner: "
+                f"file={path} line={line_no} symbol_type={symbol_type}",
+                file=sys.stderr,
             )
+            return None
         return (owner_kind, owner_name)
 
     with path.open("r", encoding="utf-8", errors="replace") as file_obj:
@@ -495,7 +498,10 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
 
             property_name = extract_property_name(line)
             if property_name:
-                resolved_owner_kind, resolved_owner_name = require_owner("property", index)
+                owner = require_owner("property", index)
+                if owner is None:
+                    return None
+                resolved_owner_kind, resolved_owner_name = owner
                 symbols.append(
                     ParsedSymbol(
                         owner_kind=resolved_owner_kind,
@@ -510,7 +516,10 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
             if in_ivar_block and stripped and not stripped.startswith("/*"):
                 ivar_name = extract_ivar_name(line)
                 if ivar_name:
-                    resolved_owner_kind, resolved_owner_name = require_owner("ivar", index)
+                    owner = require_owner("ivar", index)
+                    if owner is None:
+                        return None
+                    resolved_owner_kind, resolved_owner_name = owner
                     symbols.append(
                         ParsedSymbol(
                             owner_kind=resolved_owner_kind,
@@ -526,7 +535,10 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
                 selector = extract_selector(stripped)
                 if selector:
                     symbol_type = "class_method" if stripped.startswith("+") else "instance_method"
-                    resolved_owner_kind, resolved_owner_name = require_owner(symbol_type, index)
+                    owner = require_owner(symbol_type, index)
+                    if owner is None:
+                        return None
+                    resolved_owner_kind, resolved_owner_name = owner
                     symbols.append(
                         ParsedSymbol(
                             owner_kind=resolved_owner_kind,
@@ -656,10 +668,12 @@ def assign_version_numbers(
     return assigned
 
 
-def parse_file_task(file_path: Path) -> tuple[str, int, list[ParsedSymbol], bytes]:
+def parse_file_task(file_path: Path) -> tuple[str, int, list[ParsedSymbol], bytes] | None:
     raw_bytes = file_path.read_bytes()
     text_md5 = hashlib.md5(raw_bytes).hexdigest()
     symbols = parse_header_symbols(file_path)
+    if symbols is None:
+        return None
     return (text_md5, len(raw_bytes), symbols, raw_bytes)
 
 
@@ -671,7 +685,7 @@ def import_bundle(
     headers_root: Path,
     state: dict[str, Any],
     args: argparse.Namespace,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     bundle_root = headers_root / version.bundle_name
     files = sorted(bundle_root.rglob("*.h"))
     if args.max_files > 0:
@@ -681,7 +695,7 @@ def import_bundle(
     start_index = int(bundle_state.get("next_index", 0)) if args.resume else 0
     if start_index >= len(files):
         print(f"[skip] {version.bundle_name}: already completed")
-        return (0, 0)
+        return (0, 0, 0)
 
     print(
         f"[bundle] {version.bundle_name} version={version.version_id} files={len(files)} start={start_index}"
@@ -692,6 +706,7 @@ def import_bundle(
     symbols_rows: list[tuple[Any, ...]] = []
     total_files = 0
     total_symbols = 0
+    skipped_files = 0
     total_pending = len(files) - start_index
     bundle_start_ts = time.time()
 
@@ -754,14 +769,23 @@ def import_bundle(
             for chunk_index, (current_file, future) in enumerate(zip(chunk_files, futures)):
                 offset = start_index + chunk_base + chunk_index
                 try:
-                    text_md5, byte_size, parsed_symbols, raw_bytes = future.result()
+                    parsed = future.result()
                 except Exception as exc:
                     if not args.continue_on_error:
                         raise
                     print(f"[error] parse failed: {current_file} reason={exc}", file=sys.stderr)
+                    skipped_files += 1
                     bundle_state["next_index"] = offset + 1
                     save_state(args.state_file, state)
                     continue
+
+                if parsed is None:
+                    skipped_files += 1
+                    bundle_state["next_index"] = offset + 1
+                    save_state(args.state_file, state)
+                    continue
+
+                text_md5, byte_size, parsed_symbols, raw_bytes = parsed
 
                 absolute_path = to_absolute_path(current_file.relative_to(bundle_root).as_posix())
                 path_id = content_id_for("path", absolute_path)
@@ -826,9 +850,12 @@ def import_bundle(
     save_state(args.state_file, state)
 
     _print_progress(version.bundle_name, total_files, total_pending, bundle_start_ts)
-    print(f"[bundle-done] {version.bundle_name}: files={total_files} symbols={total_symbols}")
+    print(
+        f"[bundle-done] {version.bundle_name}: "
+        f"files={total_files} symbols={total_symbols} skipped_files={skipped_files}"
+    )
 
-    return (total_files, total_symbols)
+    return (total_files, total_symbols, skipped_files)
 
 
 def _existing_versions(ch: ClickHouseClient, args: argparse.Namespace) -> set[tuple[int, str]]:
@@ -1057,10 +1084,11 @@ def main() -> None:
 
     total_files = 0
     total_symbols = 0
+    total_skipped_files = 0
     start = time.time()
 
     for version in versions:
-        files_count, symbols_count = import_bundle(
+        files_count, symbols_count, skipped_count = import_bundle(
             ch,
             uploader,
             packer,
@@ -1071,6 +1099,7 @@ def main() -> None:
         )
         total_files += files_count
         total_symbols += symbols_count
+        total_skipped_files += skipped_count
 
     duration = time.time() - start
     summary = {
@@ -1078,6 +1107,7 @@ def main() -> None:
         "total_versions": len(versions),
         "imported_files": total_files,
         "imported_symbols": total_symbols,
+        "skipped_files": total_skipped_files,
         "duration_sec": round(duration, 2),
         "mode": "no-dedup",
     }
