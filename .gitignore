@@ -1,5 +1,6 @@
 /.caches
 /.files
+/.firmwares
 /.headers
 /data/
 /.env
