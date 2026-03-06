@@ -3,6 +3,7 @@ services:
     image: clickhouse/clickhouse-server:24.8
     container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_clickhouse
     ports:
+      - "${CLICKHOUSE_HTTP_PORT:-18123}:8123"
       - "${CLICKHOUSE_NATIVE_PORT:-19000}:9000"
     environment:
       CLICKHOUSE_DB: ${CLICKHOUSE_DB:-ios_headers}
