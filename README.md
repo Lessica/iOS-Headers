@@ -45,12 +45,18 @@
 
 ### 依赖
 
-- 需要 Python 包：
+- 建立 Python 虚拟环境（推荐）：
+  - `python3 -m venv .venv`
+- 激活虚拟环境：
+  - `source .venv/bin/activate`
+- 安装依赖：
   - `python3 -m pip install -r requirements.txt`
 
 ### 导入命令
 
-- 单 bundle 全量导入：
+- 全量导入：
+  - `scripts/import_headers_v2.zsh`
+- 单 bundle：
   - `scripts/import_headers_v2.zsh --bundle 19C56__iPhone11,2_4_6_iPhone12,3_5`
 - 小样本测试：
   - `scripts/import_headers_v2.zsh --bundle 19C56__iPhone11,2_4_6_iPhone12,3_5 --max-files 100`
