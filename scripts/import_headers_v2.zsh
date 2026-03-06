@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ENV_FILE="$ROOT_DIR/deploy/.env"
-EXAMPLE_ENV_FILE="$ROOT_DIR/deploy/.env.example"
+ENV_FILE="$ROOT_DIR/.env"
+EXAMPLE_ENV_FILE="$ROOT_DIR/.env.example"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$EXAMPLE_ENV_FILE" "$ENV_FILE"
@@ -21,7 +21,8 @@ read_env() {
   fi
 }
 
-CH_PORT="$(read_env CLICKHOUSE_HTTP_PORT 18123)"
+CH_HOST="$(read_env CLICKHOUSE_HOST 127.0.0.1)"
+CH_PORT="$(read_env CLICKHOUSE_NATIVE_PORT 19000)"
 CH_DB="$(read_env CLICKHOUSE_DB ios_headers)"
 CH_USER="$(read_env CLICKHOUSE_USER default)"
 CH_PASS="$(read_env CLICKHOUSE_PASSWORD '')"
@@ -44,7 +45,8 @@ if [[ ! -f "$PY_SCRIPT" ]]; then
 fi
 
 "$PYTHON_BIN" "$PY_SCRIPT" \
-  --clickhouse-url "http://127.0.0.1:${CH_PORT}" \
+  --clickhouse-host "$CH_HOST" \
+  --clickhouse-port "$CH_PORT" \
   --clickhouse-db "$CH_DB" \
   --clickhouse-user "$CH_USER" \
   --clickhouse-password "$CH_PASS" \

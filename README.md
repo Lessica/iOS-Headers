@@ -12,19 +12,18 @@
 
 - ClickHouse：元数据与符号索引
 - Redis：热点缓存
-- RedisInsight：Redis 可视化管理
 - MinIO：头文件正文对象存储
 
 ### 快速启动
 
 1. 复制环境变量文件：
-   - `cp deploy/.env.example deploy/.env`
+  - `cp .env.example .env`
 2. 启动服务：
    - `zsh scripts/deploy_local_stack.zsh up`
 3. 健康检查：
    - `zsh scripts/deploy_local_stack.zsh check`
 
-启动完成后，`deploy_local_stack.zsh up` 会自动在 RedisInsight 中创建到 `redis:6379` 的连接（名称 `local-redis`）。
+启动完成后，`deploy_local_stack.zsh up` 会自动完成 MinIO bucket 初始化（原 `minio-init` 逻辑已迁移到脚本）。
 
 ### 常用命令
 
@@ -35,8 +34,9 @@
 - 日志：`zsh scripts/deploy_local_stack.zsh logs`
 - 单服务日志：`zsh scripts/deploy_local_stack.zsh logs clickhouse`
 - 重建表结构：`zsh scripts/deploy_local_stack.zsh init-db`
+- 仅初始化 MinIO bucket：`zsh scripts/deploy_local_stack.zsh init-minio`
 
-默认进度刷新频率可在 `deploy/.env` 中统一配置：
+默认进度刷新频率可在 `.env` 中统一配置：
 - `PROGRESS_EVERY=5000`
 - 作用于 `import_headers_v2.zsh`、`build_symbol_presence_v2.zsh`、`verify_import_integrity_v2.zsh`
 - 如命令行显式传入 `--progress-every`，会覆盖该默认值
@@ -54,7 +54,7 @@
 ### 依赖
 
 - 需要 Python 包：
-  - `python3 -m pip install minio`
+  - `python3 -m pip install minio clickhouse-driver`
 
 ### 导入命令
 
@@ -84,7 +84,7 @@
 
 ### 断点状态文件
 
-- `deploy/data/import_state_v2_no_dedup.json`
+- `data/import_state_v2_no_dedup.json`
 
 ## 构建符号可用性表
 
@@ -128,16 +128,13 @@
 
 ## 端点
 
-- ClickHouse HTTP：`http://127.0.0.1:18123`
 - ClickHouse Native：`127.0.0.1:19000`
 - Redis：`127.0.0.1:16379`
-- RedisInsight：`http://127.0.0.1:15540`
 - MinIO API：`http://127.0.0.1:19001`
-- MinIO Console：`http://127.0.0.1:19002`
 
 ## 关键文件
 
-- Compose：`deploy/docker-compose.yml`
-- ClickHouse DDL：`deploy/clickhouse/init/001_schema.sql`
-- 本地持久化目录：`deploy/data`
+- Compose：`docker-compose.yml`
+- ClickHouse DDL：`clickhouse/init/001_schema.sql`
+- 本地持久化目录：`data`
 - MinIO Bucket：`ios-headers`

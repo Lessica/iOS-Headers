@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-COMPOSE_FILE="$ROOT_DIR/deploy/docker-compose.yml"
-ENV_FILE="$ROOT_DIR/deploy/.env"
-EXAMPLE_ENV_FILE="$ROOT_DIR/deploy/.env.example"
+COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
+ENV_FILE="$ROOT_DIR/.env"
+EXAMPLE_ENV_FILE="$ROOT_DIR/.env.example"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$EXAMPLE_ENV_FILE" "$ENV_FILE"
@@ -42,47 +42,58 @@ wait_http_ok() {
   return 1
 }
 
-ensure_redisinsight_connection() {
-  local redisinsight_port="$1"
-  local existing response
-
-  existing="$(curl -fsS "http://127.0.0.1:${redisinsight_port}/api/databases" || echo "[]")"
-  if echo "$existing" | grep -q '"host":"redis"' && echo "$existing" | grep -q '"port":6379'; then
-    echo "redisinsight connection already exists"
-    return 0
+get_env_value() {
+  local key="$1"
+  local default_value="$2"
+  local value
+  value="$(grep -E "^${key}=" "$ENV_FILE" | tail -n1 | cut -d'=' -f2- || true)"
+  if [[ -z "$value" ]]; then
+    value="$default_value"
   fi
+  echo "$value"
+}
 
-  response="$(curl -fsS -X POST "http://127.0.0.1:${redisinsight_port}/api/databases" \
-    -H "Content-Type: application/json" \
-    -d '{"host":"redis","port":6379,"name":"local-redis"}')"
+ensure_minio_bucket() {
+  local project_name network_name minio_root_user minio_root_password minio_bucket
+  project_name="$(get_env_value "COMPOSE_PROJECT_NAME" "ios_headers")"
+  network_name="${project_name}_net"
+  minio_root_user="$(get_env_value "MINIO_ROOT_USER" "minioadmin")"
+  minio_root_password="$(get_env_value "MINIO_ROOT_PASSWORD" "minioadmin")"
+  minio_bucket="$(get_env_value "MINIO_BUCKET" "ios-headers")"
 
-  if echo "$response" | grep -q '"host":"redis"' && echo "$response" | grep -q '"port":6379'; then
-    echo "redisinsight connection created"
-    return 0
-  fi
-
-  echo "redisinsight connection setup failed"
-  return 1
+  docker run --rm --network "$network_name" minio/mc:latest /bin/sh -c \
+    "mc alias set local http://minio:9000 '$minio_root_user' '$minio_root_password' && \
+    (mc mb -p local/'$minio_bucket' || true) && \
+    mc anonymous set download local/'$minio_bucket' && \
+    echo 'minio bucket initialized'"
 }
 
 up() {
   require_tools
   compose up -d
 
-  local ch_port minio_port redisinsight_port
-  ch_port="$(grep -E '^CLICKHOUSE_HTTP_PORT=' "$ENV_FILE" | cut -d'=' -f2)"
-  minio_port="$(grep -E '^MINIO_API_PORT=' "$ENV_FILE" | cut -d'=' -f2)"
-  redisinsight_port="$(grep -E '^REDIS_INSIGHT_PORT=' "$ENV_FILE" | cut -d'=' -f2)"
-  if [[ -z "$redisinsight_port" ]]; then
-    redisinsight_port="15540"
+  local minio_port
+  minio_port="$(get_env_value "MINIO_API_PORT" "19001")"
+
+  local i=1
+  while (( i <= 60 )); do
+    if compose exec -T clickhouse clickhouse-client --query "SELECT 1" >/dev/null 2>&1; then
+      echo "clickhouse is healthy"
+      break
+    fi
+    sleep 1
+    ((i++))
+  done
+  if (( i > 60 )); then
+    echo "clickhouse health check failed"
+    return 1
   fi
-  wait_http_ok "clickhouse" "http://127.0.0.1:${ch_port}/ping"
+
   wait_http_ok "minio" "http://127.0.0.1:${minio_port}/minio/health/live"
-  wait_http_ok "redisinsight" "http://127.0.0.1:${redisinsight_port}/api/health"
 
   compose exec -T redis redis-cli ping | grep -q PONG
   echo "redis is healthy"
-  ensure_redisinsight_connection "$redisinsight_port"
+  ensure_minio_bucket
 
   echo "stack is up"
   compose ps
@@ -115,11 +126,10 @@ logs() {
 
 check() {
   require_tools
-  local ch_port minio_port
-  ch_port="$(grep -E '^CLICKHOUSE_HTTP_PORT=' "$ENV_FILE" | cut -d'=' -f2)"
-  minio_port="$(grep -E '^MINIO_API_PORT=' "$ENV_FILE" | cut -d'=' -f2)"
+  local minio_port
+  minio_port="$(get_env_value "MINIO_API_PORT" "19001")"
 
-  curl -fsS "http://127.0.0.1:${ch_port}/ping" | grep -q Ok.
+  compose exec -T clickhouse clickhouse-client --query "SELECT 1" | grep -q '^1$'
   echo "clickhouse ping ok"
 
   curl -fsS "http://127.0.0.1:${minio_port}/minio/health/live" >/dev/null
@@ -134,12 +144,17 @@ check() {
 
 init_db() {
   require_tools
-  compose exec -T clickhouse clickhouse-client < "$ROOT_DIR/deploy/clickhouse/init/001_schema.sql"
+  compose exec -T clickhouse clickhouse-client < "$ROOT_DIR/clickhouse/init/001_schema.sql"
   echo "schema initialized"
 }
 
+init_minio() {
+  require_tools
+  ensure_minio_bucket
+}
+
 usage() {
-  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db}"
+  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|init-minio}"
 }
 
 case "${1:-}" in
@@ -150,5 +165,6 @@ case "${1:-}" in
   logs) shift; logs "${1:-}" ;;
   check) check ;;
   init-db) init_db ;;
+  init-minio) init_minio ;;
   *) usage; exit 1 ;;
 esac

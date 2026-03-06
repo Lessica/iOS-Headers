@@ -15,8 +15,12 @@ import re
 import sys
 import time
 from typing import Any
-from urllib import error, parse, request
 from xml.parsers.expat import ExpatError
+
+try:
+    from clickhouse_driver import Client as ClickHouseNativeClient
+except ImportError:
+    ClickHouseNativeClient = None
 
 try:
     from minio import Minio
@@ -57,30 +61,32 @@ class Issue:
 
 
 class ClickHouseClient:
-    def __init__(self, base_url: str, database: str, user: str, password: str) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.database = database
-        self.user = user
-        self.password = password
+    def __init__(self, host: str, port: int, database: str, user: str, password: str) -> None:
+        if ClickHouseNativeClient is None:
+            raise RuntimeError(
+                "Missing dependency: clickhouse-driver. Install with: python3 -m pip install clickhouse-driver"
+            )
+        self.client = ClickHouseNativeClient(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+            connect_timeout=10,
+            send_receive_timeout=600,
+        )
 
     def execute(self, sql: str, retries: int = 3, retry_sleep: float = 1.0) -> str:
-        params = {
-            "database": self.database,
-            "user": self.user,
-            "password": self.password,
-        }
-        url = f"{self.base_url}/?{parse.urlencode(params)}"
-        data = sql.encode("utf-8")
         last_exc: Exception | None = None
         for attempt in range(1, retries + 1):
             try:
-                req = request.Request(url=url, data=data, method="POST")
-                with request.urlopen(req, timeout=300) as resp:
-                    return resp.read().decode("utf-8", errors="replace")
-            except error.HTTPError as exc:
-                body = exc.read().decode("utf-8", errors="replace")
-                last_exc = RuntimeError(f"ClickHouse HTTP {exc.code}: {body.strip()[:500]}")
-            except (error.URLError, TimeoutError) as exc:
+                rows = self.client.execute(sql)
+                if not rows:
+                    return ""
+                if isinstance(rows[0], (tuple, list)):
+                    return "\n".join("\t".join(_escape_tsv(value) for value in row) for row in rows)
+                return "\n".join(_escape_tsv(row) for row in rows)
+            except Exception as exc:
                 last_exc = exc
             if attempt == retries:
                 break
@@ -97,23 +103,13 @@ class ClickHouseClient:
     ) -> None:
         if not rows:
             return
-        query = f"INSERT INTO {table} ({', '.join(columns)}) FORMAT TSV\n"
-        payload = query + "\n".join("\t".join(_escape_tsv(value) for value in row) for row in rows)
-        data = payload.encode("utf-8")
-        params = {
-            "database": self.database,
-            "user": self.user,
-            "password": self.password,
-        }
-        url = f"{self.base_url}/?{parse.urlencode(params)}"
-
+        query = f"INSERT INTO {table} ({', '.join(columns)}) VALUES"
         last_exc: Exception | None = None
         for attempt in range(1, retries + 1):
             try:
-                req = request.Request(url=url, data=data, method="POST")
-                with request.urlopen(req, timeout=600):
-                    return
-            except (error.HTTPError, error.URLError, TimeoutError) as exc:
+                self.client.execute(query, rows)
+                return
+            except Exception as exc:
                 last_exc = exc
                 if attempt == retries:
                     break
@@ -257,8 +253,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--headers-root", type=Path, default=Path("headers"))
     parser.add_argument("--files-root", type=Path, default=Path("files"))
-    parser.add_argument("--state-file", type=Path, default=Path("deploy/data/import_state_v2_no_dedup.json"))
-    parser.add_argument("--clickhouse-url", default="http://127.0.0.1:18123")
+    parser.add_argument("--state-file", type=Path, default=Path("data/import_state_v2_no_dedup.json"))
+    parser.add_argument("--clickhouse-host", default="127.0.0.1")
+    parser.add_argument("--clickhouse-port", type=int, default=19000)
     parser.add_argument("--clickhouse-db", default="ios_headers")
     parser.add_argument("--clickhouse-user", default="default")
     parser.add_argument("--clickhouse-password", default="")
@@ -962,7 +959,8 @@ def main() -> None:
         raise SystemExit(f"Invalid files root: {args.files_root}")
 
     ch = ClickHouseClient(
-        base_url=args.clickhouse_url,
+        host=args.clickhouse_host,
+        port=args.clickhouse_port,
         database=args.clickhouse_db,
         user=args.clickhouse_user,
         password=args.clickhouse_password,

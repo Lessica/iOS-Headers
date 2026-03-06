@@ -6,7 +6,11 @@ import json
 import sys
 import time
 from typing import Any
-from urllib import error, parse, request
+
+try:
+    from clickhouse_driver import Client as ClickHouseNativeClient
+except ImportError:
+    ClickHouseNativeClient = None
 
 try:
     from minio import Minio
@@ -17,28 +21,32 @@ except ImportError:
 
 
 class ClickHouseClient:
-    def __init__(self, base_url: str, database: str, user: str, password: str) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.database = database
-        self.user = user
-        self.password = password
+    def __init__(self, host: str, port: int, database: str, user: str, password: str) -> None:
+        if ClickHouseNativeClient is None:
+            raise RuntimeError(
+                "Missing dependency: clickhouse-driver. Install with: python3 -m pip install clickhouse-driver"
+            )
+        self.client = ClickHouseNativeClient(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+            connect_timeout=10,
+            send_receive_timeout=300,
+        )
 
     def execute(self, sql: str, retries: int = 3, retry_sleep: float = 1.0) -> str:
-        params = {
-            "database": self.database,
-            "user": self.user,
-            "password": self.password,
-            "query": sql,
-        }
-        url = f"{self.base_url}/?{parse.urlencode(params)}"
-
         last_exc: Exception | None = None
         for attempt in range(1, retries + 1):
             try:
-                req = request.Request(url=url, method="POST")
-                with request.urlopen(req, timeout=300) as resp:
-                    return resp.read().decode("utf-8", errors="replace")
-            except (error.HTTPError, error.URLError, TimeoutError) as exc:
+                rows = self.client.execute(sql)
+                if not rows:
+                    return ""
+                if isinstance(rows[0], (tuple, list)):
+                    return "\n".join("\t".join(str(value) for value in row) for row in rows)
+                return "\n".join(str(row) for row in rows)
+            except Exception as exc:
                 last_exc = exc
                 if attempt == retries:
                     break
@@ -101,7 +109,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Verify import integrity between ClickHouse contents rows and MinIO objects."
     )
-    parser.add_argument("--clickhouse-url", default="http://127.0.0.1:18123")
+    parser.add_argument("--clickhouse-host", default="127.0.0.1")
+    parser.add_argument("--clickhouse-port", type=int, default=19000)
     parser.add_argument("--clickhouse-db", default="ios_headers")
     parser.add_argument("--clickhouse-user", default="default")
     parser.add_argument("--clickhouse-password", default="")
@@ -241,7 +250,8 @@ def main() -> None:
     args = parse_args()
 
     ch = ClickHouseClient(
-        base_url=args.clickhouse_url,
+        host=args.clickhouse_host,
+        port=args.clickhouse_port,
         database=args.clickhouse_db,
         user=args.clickhouse_user,
         password=args.clickhouse_password,
