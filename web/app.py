@@ -94,7 +94,7 @@ def _render_search_page(query: str, selected_dir_name: str) -> str:
 
 
 @app.get("/v/latest/<path:absolute_path>")
-def view_latest_header(absolute_path: str) -> str:
+def view_latest_header(absolute_path: str) -> Any:
     normalized_path = _normalize_absolute_path(absolute_path)
     if not normalized_path:
         abort(404)
@@ -103,9 +103,12 @@ def view_latest_header(absolute_path: str) -> str:
     if result is None:
         abort(404)
 
-    return view_header(
-        version_id=_encode_version_id_for_url(result.version_id),
-        absolute_path=result.absolute_path.lstrip("/"),
+    return redirect(
+        url_for(
+            "view_header",
+            version_id=_encode_version_id_for_url(result.version_id),
+            absolute_path=result.absolute_path.lstrip("/"),
+        )
     )
 
 
