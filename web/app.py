@@ -59,11 +59,11 @@ def directory_page(directory_name: str) -> str:
 
 
 def _render_search_page(query: str, selected_dir_name: str) -> str:
-
     cache_key = _search_cache_key(query=query, selected_dir=selected_dir_name)
-    cached_html = cache.get_text(cache_key)
-    if cached_html is not None:
-        return cached_html
+    if settings.enable_redis_page_cache:
+        cached_html = cache.get_text(cache_key)
+        if cached_html is not None:
+            return cached_html
 
     query_started_at = time.perf_counter()
 
@@ -87,9 +87,11 @@ def _render_search_page(query: str, selected_dir_name: str) -> str:
         directory_files=directory_files,
         latest_version_num=latest_version_num,
         query_elapsed_ms=query_elapsed_ms,
+        show_query_elapsed_ms=settings.show_query_elapsed_ms,
     )
 
-    cache.set_text(cache_key, html, settings.search_cache_ttl_seconds)
+    if settings.enable_redis_page_cache:
+        cache.set_text(cache_key, html, settings.search_cache_ttl_seconds)
     return html
 
 
@@ -130,9 +132,10 @@ def view_header(version_id: str, absolute_path: str) -> str:
         abort(404)
 
     cache_key = _view_cache_key(version_num=content_ref.version_num, path_id=content_ref.path_id)
-    cached_html = cache.get_text(cache_key)
-    if cached_html is not None:
-        return cached_html
+    if settings.enable_redis_page_cache:
+        cached_html = cache.get_text(cache_key)
+        if cached_html is not None:
+            return cached_html
 
     model = _build_view_model(content_ref)
     query_elapsed_ms = int((time.perf_counter() - query_started_at) * 1000)
@@ -146,8 +149,10 @@ def view_header(version_id: str, absolute_path: str) -> str:
         line_count=len(model.source_text.splitlines()),
         availability_rows=model.availability_rows,
         query_elapsed_ms=query_elapsed_ms,
+        show_query_elapsed_ms=settings.show_query_elapsed_ms,
     )
-    cache.set_text(cache_key, html, settings.view_cache_ttl_seconds)
+    if settings.enable_redis_page_cache:
+        cache.set_text(cache_key, html, settings.view_cache_ttl_seconds)
     return html
 
 

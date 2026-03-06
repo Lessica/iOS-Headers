@@ -7,7 +7,9 @@
     <a href="{{ url_for('search_page') }}">Back to search</a>
   </div>
   <p class="muted">Current version: {{ version_id }}</p>
+  {% if show_query_elapsed_ms %}
   <p class="muted">Query Time: {{ query_elapsed_ms }} ms</p>
+  {% endif %}
 </div>
 
 <section class="card">
