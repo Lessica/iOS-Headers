@@ -175,10 +175,10 @@ class Repository:
                 FROM
                 (
                     SELECT
-                        fi.version_num,
-                        v.version_id,
-                        p.path_id,
-                        p.absolute_path,
+                        fi.version_num AS version_num,
+                        v.version_id AS version_id,
+                        p.path_id AS path_id,
+                        p.absolute_path AS absolute_path,
                         if(lowerUTF8(extract(p.absolute_path, '[^/]+$')) = keyword_lc, 0, 1) AS match_rank
                     FROM file_instances fi
                     INNER JOIN paths p ON p.path_id = fi.path_id
@@ -189,10 +189,10 @@ class Repository:
                     UNION ALL
 
                     SELECT
-                        fi.version_num,
-                        v.version_id,
-                        p.path_id,
-                        p.absolute_path,
+                        fi.version_num AS version_num,
+                        v.version_id AS version_id,
+                        p.path_id AS path_id,
+                        p.absolute_path AS absolute_path,
                         min(if(lowerUTF8(s.owner_name) = keyword_lc, 0, 1)) AS match_rank
                     FROM symbols s
                     INNER JOIN file_instances fi ON fi.content_id = s.content_id
