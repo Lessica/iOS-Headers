@@ -538,17 +538,17 @@ class Repository:
         )
         return [(int(row[0]), str(row[1])) for row in rows]
 
-    def list_symbols_for_content(self, content_id: int) -> list[tuple[str, str, str]]:
+    def list_symbols_for_content(self, content_id: int) -> list[tuple[str, str, str, int]]:
         rows = self._ch.query(
             """
-            SELECT DISTINCT owner_name, symbol_type, symbol_key
+            SELECT DISTINCT owner_name, symbol_type, symbol_key, line_no
             FROM symbols
             WHERE content_id = %(content_id)s
-            ORDER BY owner_name ASC, symbol_type ASC, symbol_key ASC
+            ORDER BY owner_name ASC, symbol_type ASC, symbol_key ASC, line_no ASC
             """,
             {"content_id": content_id},
         )
-        return [(str(row[0]), str(row[1]), str(row[2])) for row in rows]
+        return [(str(row[0]), str(row[1]), str(row[2]), int(row[3])) for row in rows]
 
     def get_symbol_presence_map(self, path_id: int) -> dict[tuple[str, str, str], set[int]]:
         rows = self._ch.query(

@@ -26,6 +26,7 @@ class ViewModel:
     rendered_source_html: str
     versions: list[tuple[int, str]]
     availability_rows: list[dict[str, Any]]
+    source_line_availability: dict[int, list[str]]
 
 
 settings = load_settings()
@@ -46,6 +47,14 @@ SYMBOL_TYPE_PRIORITY = {
     "property": 1,
     "class method": 2,
     "instance method": 3,
+}
+SOURCE_HOVER_SYMBOL_TYPES = {
+    "ivar",
+    "property",
+    "class method",
+    "instance method",
+    "class_method",
+    "instance_method",
 }
 
 
@@ -326,6 +335,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
         line_count=len(model.source_text.splitlines()),
         file_size_text=_format_bytes_for_display(model.ref.pack_length),
         availability_rows=model.availability_rows,
+        source_line_availability=model.source_line_availability,
         query_elapsed_ms=query_elapsed_ms,
         show_query_elapsed_ms=settings.show_query_elapsed_ms,
     )
@@ -356,14 +366,17 @@ def _build_view_model(
     content_ref: FileContentRef,
     source_text: str,
     versions: list[tuple[int, str]],
-    symbols: list[tuple[str, str, str]],
+    symbols: list[tuple[str, str, str, int]],
     presence_map: dict[tuple[str, str, str], set[int]],
     same_directory_files: set[str],
 ) -> ViewModel:
     version_by_num = {version_num: version_id for version_num, version_id in versions}
+    version_label_by_num = {version_num: _version_label_for_display(version_id) for version_num, version_id in versions}
 
     availability_rows: list[dict[str, Any]] = []
-    for owner_name, symbol_type, symbol_key in symbols:
+    line_to_version_nums: dict[int, set[int]] = {}
+
+    for owner_name, symbol_type, symbol_key, line_no in symbols:
         key = (owner_name, symbol_type, symbol_key)
         existing_versions = presence_map.get(key, set())
         states = [
@@ -383,6 +396,11 @@ def _build_view_model(
             }
         )
 
+        normalized_symbol_type = symbol_type.strip().lower()
+        if line_no > 0 and normalized_symbol_type in SOURCE_HOVER_SYMBOL_TYPES and existing_versions:
+            bucket = line_to_version_nums.setdefault(line_no, set())
+            bucket.update(existing_versions)
+
     availability_rows.sort(
         key=lambda row: (
             SYMBOL_TYPE_PRIORITY.get(str(row.get("symbol_type", "")).strip().lower(), len(SYMBOL_TYPE_PRIORITY)),
@@ -398,12 +416,25 @@ def _build_view_model(
         directory_files=same_directory_files,
     )
 
+    source_line_availability: dict[int, list[str]] = {}
+    for line_no, version_nums in line_to_version_nums.items():
+        labels: list[str] = []
+        for version_num, _ in versions:
+            if version_num not in version_nums:
+                continue
+            label = version_label_by_num.get(version_num, "")
+            if label and label not in labels:
+                labels.append(label)
+        if labels:
+            source_line_availability[line_no] = labels
+
     return ViewModel(
         ref=content_ref,
         source_text=source_text,
         rendered_source_html=rendered.html,
         versions=versions,
         availability_rows=availability_rows,
+        source_line_availability=source_line_availability,
     )
 
 
@@ -511,6 +542,16 @@ def _format_version_id_for_display(version_id: str) -> str:
     if major and build:
         return f"{major} · {build}"
     return major or build
+
+
+def _version_label_for_display(version_id: str) -> str:
+    value = version_id.strip()
+    if not value:
+        return value
+    if "|" not in value:
+        return value
+    major, _build = value.split("|", 1)
+    return major.strip() or value
 
 
 def _format_bytes_for_display(size_bytes: int | None) -> str:

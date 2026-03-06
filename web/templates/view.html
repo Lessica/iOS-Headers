@@ -25,7 +25,7 @@
 
   <section class="panel stack-3">
     <h2 class="title-lg">Source</h2>
-    <div class="code-block"><code>{{ rendered_source_html|safe }}</code></div>
+    <div class="code-block"><code id="source-code" class="language-objectivec">{{ rendered_source_html|safe }}</code></div>
   </section>
 
   <details class="panel stack-3 matrix-collapsible">
@@ -33,4 +33,252 @@
     {% include "_partials/availability_table.html" %}
   </details>
 </div>
+<script src="{{ url_for('static', filename='vendor/prism/prism-core.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/prism/prism-clike.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/prism/prism-c.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/prism/prism-objectivec.min.js') }}"></script>
+<script id="source-line-availability" type="application/json">{{ source_line_availability | tojson }}</script>
+<script>
+  (() => {
+    const sourceCode = document.getElementById('source-code');
+    if (!sourceCode || typeof Prism === 'undefined') {
+      return;
+    }
+
+    const grammar = Prism.languages.objectivec || Prism.languages.c || Prism.languages.clike;
+    if (!grammar) {
+      return;
+    }
+
+    const appendToken = (token, parent) => {
+      if (Array.isArray(token)) {
+        for (const child of token) {
+          appendToken(child, parent);
+        }
+        return;
+      }
+
+      if (typeof token === 'string') {
+        parent.appendChild(document.createTextNode(token));
+        return;
+      }
+
+      const span = document.createElement('span');
+      const aliases = Array.isArray(token.alias) ? token.alias : (token.alias ? [token.alias] : []);
+      span.className = ['token', token.type, ...aliases].join(' ');
+      appendToken(token.content, span);
+      parent.appendChild(span);
+    };
+
+    const textNodes = [];
+    const walker = document.createTreeWalker(sourceCode, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue || !node.nodeValue.trim()) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        const parent = node.parentElement;
+        if (!parent) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        if (parent.closest('.token')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+
+    while (walker.nextNode()) {
+      textNodes.push(walker.currentNode);
+    }
+
+    for (const node of textNodes) {
+      const tokens = Prism.tokenize(node.nodeValue, grammar);
+      const fragment = document.createDocumentFragment();
+      appendToken(tokens, fragment);
+      node.parentNode.replaceChild(fragment, node);
+    }
+    const lineAvailabilityPayload = document.getElementById('source-line-availability');
+    const lineAvailability = lineAvailabilityPayload ? JSON.parse(lineAvailabilityPayload.textContent || '{}') : {};
+    if (!lineAvailability || Object.keys(lineAvailability).length === 0) {
+      return;
+    }
+
+    const sourceBlock = sourceCode.closest('.code-block');
+    if (!sourceBlock) {
+      return;
+    }
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'source-hover-tip';
+    document.body.appendChild(tooltip);
+
+    let activeLineKey = null;
+    let lastPointerEvent = null;
+
+    const fullText = sourceCode.textContent || '';
+    const lineStarts = [0];
+    for (let index = 0; index < fullText.length; index += 1) {
+      if (fullText[index] === '\n') {
+        lineStarts.push(index + 1);
+      }
+    }
+
+    const lineNumberForOffset = (offset) => {
+      let left = 0;
+      let right = lineStarts.length - 1;
+      while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        if (lineStarts[mid] <= offset) {
+          left = mid + 1;
+        } else {
+          right = mid - 1;
+        }
+      }
+      return right + 1;
+    };
+    const hoverDelayMs = 320;
+    const hideOnMoveThresholdPx = 2;
+    let hoverTimerId = null;
+    let shownPointer = null;
+
+    const hideTooltip = () => {
+      tooltip.style.display = 'none';
+      activeLineKey = null;
+      shownPointer = null;
+    };
+
+    const clearHoverTimer = () => {
+      if (hoverTimerId !== null) {
+        window.clearTimeout(hoverTimerId);
+        hoverTimerId = null;
+      }
+    };
+
+    const positionTooltip = (x, y) => {
+      const offset = 14;
+      tooltip.style.left = `${x + offset}px`;
+      tooltip.style.top = `${y + offset}px`;
+
+      const rect = tooltip.getBoundingClientRect();
+      const maxLeft = window.innerWidth - rect.width - 10;
+      const maxTop = window.innerHeight - rect.height - 10;
+
+      if (rect.left > maxLeft) {
+        tooltip.style.left = `${Math.max(10, maxLeft)}px`;
+      }
+      if (rect.top > maxTop) {
+        tooltip.style.top = `${Math.max(10, y - rect.height - offset)}px`;
+      }
+    };
+
+    const caretOffsetFromPointer = (event) => {
+      if (document.caretPositionFromPoint) {
+        const position = document.caretPositionFromPoint(event.clientX, event.clientY);
+        if (position && sourceCode.contains(position.offsetNode)) {
+          const range = document.createRange();
+          range.setStart(sourceCode, 0);
+          range.setEnd(position.offsetNode, position.offset);
+          return range.toString().length;
+        }
+      }
+
+      if (document.caretRangeFromPoint) {
+        const range = document.caretRangeFromPoint(event.clientX, event.clientY);
+        if (range && sourceCode.contains(range.startContainer)) {
+          const offsetRange = document.createRange();
+          offsetRange.setStart(sourceCode, 0);
+          offsetRange.setEnd(range.startContainer, range.startOffset);
+          return offsetRange.toString().length;
+        }
+      }
+
+      return -1;
+    };
+
+    const lineInfoFromPointer = (event) => {
+      const offset = caretOffsetFromPointer(event);
+      if (offset < 0) {
+        return null;
+      }
+
+      const safeOffset = Math.max(0, Math.min(offset, fullText.length));
+      const lineNumber = lineNumberForOffset(safeOffset);
+      const lineStart = lineStarts[Math.max(0, lineNumber - 1)] || 0;
+      const nextLineStart = lineStarts[lineNumber] ?? (fullText.length + 1);
+      const lineEnd = Math.max(lineStart, nextLineStart - 1);
+
+      let textEnd = lineEnd;
+      while (textEnd > lineStart && /\s/.test(fullText[textEnd - 1])) {
+        textEnd -= 1;
+      }
+
+      return {
+        lineNumber,
+        isOnText: safeOffset < textEnd,
+      };
+    };
+
+    const toPointerSnapshot = (event) => ({
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+
+    const scheduleTooltip = (event) => {
+      lastPointerEvent = toPointerSnapshot(event);
+      const lineInfo = lineInfoFromPointer(event);
+      if (!lineInfo || !lineInfo.isOnText) {
+        clearHoverTimer();
+        hideTooltip();
+        return;
+      }
+      const lineNumber = lineInfo.lineNumber;
+
+      const versions = lineAvailability[String(lineNumber)] || lineAvailability[lineNumber] || null;
+      if (!Array.isArray(versions) || versions.length === 0) {
+        clearHoverTimer();
+        hideTooltip();
+        return;
+      }
+
+      const lineKey = String(lineNumber);
+      if (shownPointer) {
+        const movedX = Math.abs(event.clientX - shownPointer.clientX);
+        const movedY = Math.abs(event.clientY - shownPointer.clientY);
+        if (movedX >= hideOnMoveThresholdPx || movedY >= hideOnMoveThresholdPx) {
+          hideTooltip();
+        }
+      }
+
+      clearHoverTimer();
+      hoverTimerId = window.setTimeout(() => {
+        if (!lastPointerEvent) {
+          return;
+        }
+
+        const stableLineInfo = lineInfoFromPointer(lastPointerEvent);
+        if (!stableLineInfo || !stableLineInfo.isOnText || String(stableLineInfo.lineNumber) !== lineKey) {
+          return;
+        }
+
+        tooltip.textContent = `Available in ${versions.join(', ')}`;
+        tooltip.style.display = 'block';
+        activeLineKey = lineKey;
+        shownPointer = { ...lastPointerEvent };
+        positionTooltip(lastPointerEvent.clientX, lastPointerEvent.clientY);
+      }, hoverDelayMs);
+    };
+
+    sourceBlock.addEventListener('mouseenter', scheduleTooltip);
+    sourceBlock.addEventListener('mousemove', scheduleTooltip);
+
+    sourceBlock.addEventListener('mouseleave', () => {
+      clearHoverTimer();
+      hideTooltip();
+    });
+    sourceBlock.addEventListener('scroll', () => {
+      clearHoverTimer();
+      hideTooltip();
+    }, { passive: true });
+  })();
+</script>
 {% endblock %}

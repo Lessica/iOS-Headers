@@ -811,6 +811,64 @@
       font-size: 0.82rem;
     }
 
+    .source-hover-tip {
+      position: fixed;
+      z-index: 40;
+      max-width: min(52vw, 560px);
+      padding: 6px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: var(--shadow-soft);
+      font-size: 0.76rem;
+      line-height: 1.4;
+      pointer-events: none;
+      display: none;
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    .code-block .token.comment,
+    .code-block .token.prolog,
+    .code-block .token.doctype,
+    .code-block .token.cdata {
+      color: color-mix(in srgb, var(--text-muted), var(--accent) 10%);
+    }
+
+    .code-block .token.string,
+    .code-block .token.char,
+    .code-block .token.attr-value {
+      color: color-mix(in srgb, var(--accent), var(--text) 34%);
+    }
+
+    .code-block .token.keyword,
+    .code-block .token.selector,
+    .code-block .token.atrule {
+      color: color-mix(in srgb, var(--accent), var(--text) 20%);
+      font-weight: 620;
+    }
+
+    .code-block .token.directive,
+    .code-block .token.macro,
+    .code-block .token.property {
+      color: color-mix(in srgb, var(--text), var(--accent) 44%);
+      font-weight: 560;
+    }
+
+    .code-block .token.function,
+    .code-block .token.class-name,
+    .code-block .token.builtin {
+      color: color-mix(in srgb, var(--accent), var(--text) 26%);
+    }
+
+    .code-block .token.number,
+    .code-block .token.boolean,
+    .code-block .token.constant,
+    .code-block .token.symbol {
+      color: color-mix(in srgb, var(--accent), var(--text) 28%);
+    }
+
     .empty {
       border: 1px dashed var(--line-strong);
       border-radius: var(--radius-sm);
