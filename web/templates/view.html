@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{{ absolute_path }} · iOS Headers{% endblock %}
+{% block footer_inline %}
+{% if show_query_elapsed_ms %}
+<span class="footer-sep">·</span>
+<span>{{ query_elapsed_ms }} ms</span>
+{% endif %}
+{% endblock %}
 {% block content %}
 <div class="flow">
   <section class="panel stack-4">
@@ -7,11 +13,8 @@
     <p class="path">{{ absolute_path }}</p>
     <div class="meta-row">
       <a class="chip" href="{{ url_for('search_page') }}">Back</a>
-      <span class="chip current">{{ version_id }}</span>
+      <span class="chip current">{{ format_version_id(version_id) }}</span>
       <span class="chip">{{ line_count }} lines</span>
-      {% if show_query_elapsed_ms %}
-      <span class="chip">{{ query_elapsed_ms }} ms</span>
-      {% endif %}
     </div>
   </section>
 

@@ -12,6 +12,7 @@ class FileRef:
     version_id: str
     path_id: int
     absolute_path: str
+    file_size_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -217,13 +218,13 @@ class Repository:
             pack_length=int(row[7]),
         )
 
-    def search_directories(self, prefix: str, limit: int = 30) -> list[tuple[str, int]]:
+    def search_directories(self, prefix: str, limit: int = 30) -> list[tuple[str, str]]:
         rows = self._ch.query(
             """
             WITH lowerUTF8(%(prefix)s) AS prefix_lc
             SELECT
                 dir_name,
-                count() AS file_count
+                min(dir_path) AS sample_dir_path
             FROM paths
             WHERE startsWith(dir_name_lc, prefix_lc)
             GROUP BY dir_name
@@ -232,9 +233,9 @@ class Repository:
             """,
             {"prefix": prefix, "limit": limit},
         )
-        return [(str(row[0]), int(row[1])) for row in rows]
+        return [(str(row[0]), str(row[1])) for row in rows]
 
-    def search_owner_candidates(self, keyword: str, limit: int = 50) -> list[FileRef]:
+    def search_owner_candidates(self, keyword: str, limit: int = 50) -> list[tuple[str, str, int]]:
         rows = self._ch.query(
             """
             WITH lowerUTF8(%(keyword)s) AS keyword_lc,
@@ -321,15 +322,155 @@ class Repository:
             """,
             {"keyword": keyword, "limit": limit},
         )
-        return [
+        return [(str(row[2]), str(row[4]), int(row[3])) for row in rows]
+
+    def list_version_ids_for_paths(self, path_ids: list[int]) -> dict[int, list[str]]:
+        if not path_ids:
+            return {}
+
+        unique_path_ids = sorted(set(path_ids))
+        rows = self._ch.query(
+            """
+            SELECT
+                fi.path_id,
+                fi.version_num,
+                dictGet(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(fi.version_num)
+                ) AS version_id
+            FROM file_instances fi
+            WHERE fi.path_id IN %(path_ids)s
+                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
+            GROUP BY fi.path_id, fi.version_num, version_id
+            ORDER BY fi.path_id ASC, fi.version_num DESC
+            """,
+            {"path_ids": unique_path_ids},
+        )
+
+        version_ids_by_path: dict[int, list[str]] = {}
+        for path_id, _version_num, version_id in rows:
+            bucket = version_ids_by_path.setdefault(int(path_id), [])
+            bucket.append(str(version_id))
+        return version_ids_by_path
+
+    def count_unique_paths_in_directory_name(self, directory_name: str) -> int:
+        rows = self._ch.query(
+            """
+            SELECT count()
+            FROM paths
+            WHERE dir_name = %(directory_name)s
+            """,
+            {"directory_name": directory_name},
+        )
+        if not rows:
+            return 0
+        return int(rows[0][0])
+
+    def list_files_in_directory_name_page(
+        self,
+        version_num: int,
+        directory_name: str,
+        page_size: int,
+        cursor: str | None,
+        direction: str,
+    ) -> tuple[list[FileRef], bool, bool, str | None, str | None]:
+        safe_page_size = max(1, page_size)
+        query_limit = safe_page_size + 1
+        safe_direction = "prev" if direction == "prev" else "next"
+
+        if safe_direction == "prev":
+            order_sql = "DESC"
+            cursor_clause = (
+                """
+                AND dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'absolute_path',
+                    toUInt64(fi.path_id)
+                ) < %(cursor)s
+                """
+                if cursor
+                else ""
+            )
+        else:
+            order_sql = "ASC"
+            cursor_clause = (
+                """
+                AND dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'absolute_path',
+                    toUInt64(fi.path_id)
+                ) > %(cursor)s
+                """
+                if cursor
+                else ""
+            )
+
+        rows = self._ch.query(
+            f"""
+            SELECT
+                fi.version_num,
+                dictGet(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(fi.version_num)
+                ) AS version_id,
+                fi.path_id,
+                dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'absolute_path',
+                    toUInt64(fi.path_id)
+                ) AS absolute_path,
+                dictGetOrNull(
+                    'ios_headers.contents_by_content_id_dict',
+                    'pack_length',
+                    toUInt64(fi.content_id)
+                ) AS file_size_bytes
+            FROM file_instances fi
+            WHERE fi.version_num = %(version_num)s
+                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
+                AND dictHas('ios_headers.paths_by_id_dict', toUInt64(fi.path_id))
+                AND dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'dir_name',
+                    toUInt64(fi.path_id)
+                ) = %(directory_name)s
+                {cursor_clause}
+            ORDER BY absolute_path {order_sql}
+            LIMIT %(limit)s
+            """,
+            {
+                "version_num": version_num,
+                "directory_name": directory_name,
+                "cursor": cursor or "",
+                "limit": query_limit,
+            },
+        )
+
+        files = [
             FileRef(
-                version_num=int(row[1]),
-                version_id=str(row[2]),
-                path_id=int(row[3]),
-                absolute_path=str(row[4]),
+                version_num=int(row[0]),
+                version_id=str(row[1]),
+                path_id=int(row[2]),
+                absolute_path=str(row[3]),
+                file_size_bytes=int(row[4]) if row[4] is not None else None,
             )
             for row in rows
         ]
+
+        has_more_in_direction = len(files) > safe_page_size
+        if has_more_in_direction:
+            files = files[:safe_page_size]
+
+        if safe_direction == "prev":
+            files.reverse()
+
+        has_prev_page = bool(cursor) if safe_direction == "next" else has_more_in_direction
+        has_next_page = has_more_in_direction if safe_direction == "next" else bool(cursor)
+
+        prev_cursor = files[0].absolute_path if files and has_prev_page else None
+        next_cursor = files[-1].absolute_path if files and has_next_page else None
+        return files, has_prev_page, has_next_page, prev_cursor, next_cursor
 
     def list_files_in_directory_name(self, version_num: int, directory_name: str, limit: int = 2000) -> list[FileRef]:
         rows = self._ch.query(
@@ -346,7 +487,12 @@ class Repository:
                     'ios_headers.paths_by_id_dict',
                     'absolute_path',
                     toUInt64(fi.path_id)
-                ) AS absolute_path
+                ) AS absolute_path,
+                dictGetOrNull(
+                    'ios_headers.contents_by_content_id_dict',
+                    'pack_length',
+                    toUInt64(fi.content_id)
+                ) AS file_size_bytes
             FROM file_instances fi
             WHERE fi.version_num = %(version_num)s
                 AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
@@ -367,6 +513,7 @@ class Repository:
                 version_id=str(row[1]),
                 path_id=int(row[2]),
                 absolute_path=str(row[3]),
+                file_size_bytes=int(row[4]) if row[4] is not None else None,
             )
             for row in rows
         ]

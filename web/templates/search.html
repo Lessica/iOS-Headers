@@ -5,6 +5,12 @@
 {{ super() }}
 {% endif %}
 {% endblock %}
+{% block footer_inline %}
+{% if (query or selected_dir_name) and show_query_elapsed_ms %}
+<span class="footer-sep">·</span>
+<span>{{ query_elapsed_ms }} ms</span>
+{% endif %}
+{% endblock %}
 {% block content %}
 {% if not query and not selected_dir_name %}
 {% set search_mode = 'home' %}
@@ -24,64 +30,151 @@
 </section>
 {% else %}
 {% set search_mode = 'results' %}
-<div class="flow">
-  <section class="panel hero-panel stack-4">
-    <h1 class="sr-only">Search</h1>
+<div class="flow results-shell">
+  <section class="panel result-hero stack-4">
     {% include "_partials/search_form.html" %}
-    <div class="top-actions">
-      <div class="meta-row" aria-label="Search summary">
-        {% if query %}
-        <span class="chip current">Query: {{ query }}</span>
-        {% endif %}
-        {% if selected_dir_name %}
-        <span class="chip">Directory: {{ selected_dir_name }}</span>
-        {% endif %}
-      </div>
+    <div class="result-summary-grid" aria-label="Search overview">
+      <article class="summary-card">
+        <p class="summary-label">Indexed snapshot</p>
+        <p class="summary-value">{{ format_version_id(latest_version_id) if latest_version_id else "-" }}</p>
+      </article>
+      <article class="summary-card">
+        <p class="summary-label">Directory matches</p>
+        <p class="summary-value">{{ directory_hits|length if query else 0 }}</p>
+      </article>
+      <article class="summary-card">
+        <p class="summary-label">Owner matches</p>
+        <p class="summary-value">{{ owner_entries|length if query else 0 }}</p>
+      </article>
     </div>
   </section>
 
-  {% if query or selected_dir_name %}
-  <section class="panel-subtle metric-strip" aria-label="Overview">
-    <article class="metric">
-      <p class="metric-label">Directory matches</p>
-      <p class="metric-value">{{ directory_hits|length if query else 0 }}</p>
-    </article>
-    <article class="metric">
-      <p class="metric-label">Owner matches</p>
-      <p class="metric-value">{{ owner_hits|length if query else 0 }}</p>
-    </article>
-    <article class="metric">
-      <p class="metric-label">Latest version</p>
-      <p class="metric-value">{{ latest_version_num if latest_version_num is not none else "-" }}</p>
-    </article>
+  {% if query %}
+  <section class="panel stack-4" aria-label="Directory results">
+    <div class="section-head">
+      <h2 class="title-lg">Directory Matches</h2>
+      <span class="chip">
+        {{ directory_hits|length }}{% if directory_hits|length >= directory_hits_limit %}+{% endif %}
+      </span>
+    </div>
+    {% if directory_hits %}
+    <ul class="result-list">
+      {% for directory_name, sample_dir_path in directory_hits %}
+      <li class="result-item">
+        <div class="result-main">
+          <p class="result-title"><a href="{{ url_for('directory_page', directory_name=directory_name) }}">{{ directory_name }}</a></p>
+          <p class="path-inline">{{ sample_dir_path }}</p>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">No directory matches.</div>
+    {% endif %}
+  </section>
+
+  <section class="panel stack-4" aria-label="Owner results">
+    <div class="section-head">
+      <h2 class="title-lg">Owner Matches</h2>
+      <span class="chip">
+        {{ owner_entries|length }}{% if owner_entries|length >= owner_hits_limit %}+{% endif %}
+      </span>
+    </div>
+    {% if owner_entries %}
+    <ul class="result-list">
+      {% for item in owner_entries %}
+      <li class="result-item">
+        <div class="result-main">
+          <p class="result-title">
+            <a href="{{ url_for('view_header', version_id=encode_version_id(item.version_id), absolute_path=item.absolute_path.lstrip('/')) }}">{{ item.file_name }}</a>
+          </p>
+          <p class="path-inline">{{ item.absolute_path }}</p>
+          {% if item.version_ids %}
+          <div class="meta-row version-pill-row" aria-label="Available versions">
+            {% for version_id in item.version_ids %}
+            {% set version_parts = version_id.split('|', 1) %}
+            {% set version_only = version_parts[0] %}
+            {% set build_id = version_parts[1] if version_parts|length > 1 else '' %}
+            <a
+              class="version-pill tone-{{ loop.index0 % 12 }}"
+              href="{{ url_for('view_header', version_id=encode_version_id(version_id), absolute_path=item.absolute_path.lstrip('/')) }}"
+              aria-label="{% if build_id %}Version {{ version_only }}, build {{ build_id }}{% else %}Version {{ version_only }}{% endif %}"
+            >{{ version_only }}</a>
+            {% endfor %}
+            {% if item.remaining_versions_count > 0 %}
+            <span class="chip">+{{ item.remaining_versions_count }}</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">No owner matches.</div>
+    {% endif %}
   </section>
   {% endif %}
 
-  <section class="results-flow" aria-label="Search results">
-    {% if query %}
-    {% include "_partials/directory_results.html" %}
-    {% include "_partials/owner_results.html" %}
+  {% if selected_dir_name %}
+  <section class="panel stack-4" aria-label="Directory files">
+    <div class="section-head">
+      <h2 class="title-lg">Files in {{ selected_dir_name }}</h2>
+      <span class="chip">{{ directory_total_unique_paths_count if directory_total_unique_paths_count is not none else directory_file_entries|length }}</span>
+    </div>
+    {% if directory_file_entries %}
+    <ul class="result-list">
+      {% for file in directory_file_entries %}
+      <li class="result-item">
+        <div class="result-main">
+          <p class="result-title">
+            <a href="{{ url_for('view_header', version_id=encode_version_id(file.version_id), absolute_path=file.absolute_path.lstrip('/')) }}">{{ file.file_name }}</a>
+          </p>
+          <p class="path-inline">{{ file.absolute_path }}</p>
+          {% if file.version_ids %}
+          <div class="meta-row version-pill-row" aria-label="Available versions">
+            {% for version_id in file.version_ids %}
+            {% set version_parts = version_id.split('|', 1) %}
+            {% set version_only = version_parts[0] %}
+            {% set build_id = version_parts[1] if version_parts|length > 1 else '' %}
+            <a
+              class="version-pill tone-{{ loop.index0 % 12 }}"
+              href="{{ url_for('view_header', version_id=encode_version_id(version_id), absolute_path=file.absolute_path.lstrip('/')) }}"
+              aria-label="{% if build_id %}Version {{ version_only }}, build {{ build_id }}{% else %}Version {{ version_only }}{% endif %}"
+            >{{ version_only }}</a>
+            {% endfor %}
+            {% if file.remaining_versions_count > 0 %}
+            <span class="chip">+{{ file.remaining_versions_count }}</span>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty">No files found.</div>
     {% endif %}
 
-    {% if selected_dir_name %}
-    <section class="panel stack-3">
-      <h2 class="title-lg">Files · {{ selected_dir_name }}</h2>
-      {% if directory_files %}
-      <ul class="list">
-        {% for file in directory_files %}
-        <li>
-          <p class="list-item-title">
-            <a href="{{ url_for('view_latest_header', absolute_path=file.absolute_path.lstrip('/')) }}">{{ file.absolute_path }}</a>
-          </p>
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <div class="empty">No files found.</div>
+    {% if directory_has_prev_page or directory_has_next_page %}
+    {% if query %}
+      {% set prev_page_url = url_for('search_page', q=query, dir=selected_dir_name, dcursor=directory_prev_cursor, ddir='prev', dsize=directory_page_size) %}
+      {% set next_page_url = url_for('search_page', q=query, dir=selected_dir_name, dcursor=directory_next_cursor, ddir='next', dsize=directory_page_size) %}
+    {% else %}
+      {% set prev_page_url = url_for('directory_page', directory_name=selected_dir_name, dcursor=directory_prev_cursor, ddir='prev', dsize=directory_page_size) %}
+      {% set next_page_url = url_for('directory_page', directory_name=selected_dir_name, dcursor=directory_next_cursor, ddir='next', dsize=directory_page_size) %}
+    {% endif %}
+    <div class="meta-row pagination-row" aria-label="Directory files pagination">
+      {% if directory_has_prev_page and directory_prev_cursor %}
+      <a class="btn" href="{{ prev_page_url }}">Previous</a>
       {% endif %}
-    </section>
+      {% if directory_has_next_page and directory_next_cursor %}
+      <a class="btn" href="{{ next_page_url }}">Next</a>
+      {% endif %}
+    </div>
     {% endif %}
   </section>
+  {% endif %}
 </div>
 {% endif %}
 {% endblock %}
