@@ -66,7 +66,7 @@
 - `contents` 中通过 `pack_object_key + pack_offset + pack_length` 定位正文片段。
 - 分片与包大小可调：`--pack-shards`（默认 256）、`--pack-target-bytes`（默认 64MiB）。
 - 导入会对 `versions(version_num, version_id)` 与 `paths(path_id)` 做增量唯一写入，避免分批导入造成重复项。
-- `paths` 表包含派生列（`file_name/file_name_lc/dir_path/dir_name/dir_name_lc/is_category_file`）以优化站点查询，避免运行时路径正则处理。
+- `paths` 表包含派生列（`file_name/file_name_lc/dir_path/dir_name/dir_name_lc`）以优化站点查询，避免运行时路径正则处理。
 - 默认禁止导入“老于当前库最新版本”的新版本（避免破坏增量语义）。
 - 如需强制导入老版本，显式添加参数：`--allow-old-versions`。
 - 当前流程为 **no-dedup**（不做 content 去重）。
