@@ -35,6 +35,12 @@ SYMBOL_TYPES = {
     "instance_method",
 }
 
+OWNER_KINDS = {
+    "interface",
+    "protocol",
+    "category",
+}
+
 
 @dataclass(frozen=True)
 class VersionInfo:
@@ -452,9 +458,16 @@ def parse_owner_from_interface(line: str) -> tuple[str, str] | None:
 
 def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
     symbols: list[ParsedSymbol] = []
-    owner_kind = "global"
-    owner_name = "(global)"
+    owner_kind: str | None = None
+    owner_name: str | None = None
     in_ivar_block = False
+
+    def require_owner(symbol_type: str, line_no: int) -> tuple[str, str]:
+        if owner_kind not in OWNER_KINDS or owner_name is None or not owner_name.strip():
+            raise ValueError(
+                f"Unable to determine owner for symbol: file={path} line={line_no} symbol_type={symbol_type}"
+            )
+        return (owner_kind, owner_name)
 
     with path.open("r", encoding="utf-8", errors="replace") as file_obj:
         for index, raw_line in enumerate(file_obj, start=1):
@@ -468,8 +481,8 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
                 continue
 
             if stripped.startswith("@end"):
-                owner_kind = "global"
-                owner_name = "(global)"
+                owner_kind = None
+                owner_name = None
                 in_ivar_block = False
                 continue
 
@@ -482,10 +495,11 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
 
             property_name = extract_property_name(line)
             if property_name:
+                resolved_owner_kind, resolved_owner_name = require_owner("property", index)
                 symbols.append(
                     ParsedSymbol(
-                        owner_kind=owner_kind,
-                        owner_name=owner_name,
+                        owner_kind=resolved_owner_kind,
+                        owner_name=resolved_owner_name,
                         symbol_type="property",
                         symbol_key=property_name,
                         line_no=index,
@@ -496,10 +510,11 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
             if in_ivar_block and stripped and not stripped.startswith("/*"):
                 ivar_name = extract_ivar_name(line)
                 if ivar_name:
+                    resolved_owner_kind, resolved_owner_name = require_owner("ivar", index)
                     symbols.append(
                         ParsedSymbol(
-                            owner_kind=owner_kind,
-                            owner_name=owner_name,
+                            owner_kind=resolved_owner_kind,
+                            owner_name=resolved_owner_name,
                             symbol_type="ivar",
                             symbol_key=ivar_name,
                             line_no=index,
@@ -511,10 +526,11 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol]:
                 selector = extract_selector(stripped)
                 if selector:
                     symbol_type = "class_method" if stripped.startswith("+") else "instance_method"
+                    resolved_owner_kind, resolved_owner_name = require_owner(symbol_type, index)
                     symbols.append(
                         ParsedSymbol(
-                            owner_kind=owner_kind,
-                            owner_name=owner_name,
+                            owner_kind=resolved_owner_kind,
+                            owner_name=resolved_owner_name,
                             symbol_type=symbol_type,
                             symbol_key=selector,
                             line_no=index,
