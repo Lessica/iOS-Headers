@@ -1,13 +1,13 @@
 {% if availability_rows %}
-<div class="table-wrap" role="region" aria-label="Symbol availability table" tabindex="0">
-  <table>
+<div class="table-wrap matrix-table-wrap" role="region" aria-label="Symbol availability table" tabindex="0">
+  <table class="matrix-table">
     <thead>
       <tr>
         <th>Owner</th>
         <th>Type</th>
         <th>Symbol</th>
         {% for version_num, candidate_version_id in versions %}
-        <th>{{ candidate_version_id }}</th>
+        <th>{{ candidate_version_id | replace('|', '_') }}</th>
         {% endfor %}
       </tr>
     </thead>
@@ -29,6 +29,29 @@
     </tbody>
   </table>
 </div>
+<script>
+  (() => {
+    const table = document.querySelector('.matrix-table-wrap .matrix-table');
+    if (!table || !table.tHead || !table.tHead.rows.length || table.tHead.rows[0].cells.length < 3) {
+      return;
+    }
+
+    const updateSymbolOffset = () => {
+      const headerCells = table.tHead.rows[0].cells;
+      const ownerWidth = headerCells[0].getBoundingClientRect().width;
+      const typeWidth = headerCells[1].getBoundingClientRect().width;
+      table.style.setProperty('--matrix-symbol-left', `${Math.round(ownerWidth + typeWidth)}px`);
+    };
+
+    if ('ResizeObserver' in window) {
+      const observer = new ResizeObserver(updateSymbolOffset);
+      observer.observe(table);
+    }
+
+    window.addEventListener('resize', updateSymbolOffset, { passive: true });
+    updateSymbolOffset();
+  })();
+</script>
 {% else %}
 <div class="empty">No symbols found.</div>
 {% endif %}

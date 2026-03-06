@@ -1,10 +1,18 @@
 {% if versions %}
-<div class="meta-row" aria-label="Available versions">
+<div class="meta-row version-switch-row" aria-label="Available versions">
   {% for version_num, candidate_version_id in versions %}
+    {% set version_parts = candidate_version_id.split('|', 1) %}
+    {% set version_text = version_parts[0].strip() %}
+    {% set build_text = version_parts[1].strip() if version_parts|length > 1 else '' %}
+    {% set version_aria_label = 'Version ' ~ version_text ~ (', build ' ~ build_text if build_text else '') %}
     {% if candidate_version_id == version_id %}
-      <span class="chip current">{{ format_version_id(candidate_version_id) }}</span>
+      <span class="version-pill tone-{{ loop.index0 % 12 }}" aria-label="{{ version_aria_label }}">{{ version_text }}</span>
     {% else %}
-      <a class="chip" href="{{ url_for('view_header', version_id=encode_version_id(candidate_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(candidate_version_id) }}</a>
+      <a
+        class="version-pill tone-{{ loop.index0 % 12 }}"
+        href="{{ url_for('view_header', version_id=encode_version_id(candidate_version_id), absolute_path=absolute_path.lstrip('/')) }}"
+        aria-label="{{ version_aria_label }}"
+      >{{ version_text }}</a>
     {% endif %}
   {% endfor %}
 </div>

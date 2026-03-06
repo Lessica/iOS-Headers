@@ -41,6 +41,12 @@ app.jinja_env.globals["format_version_id"] = lambda version_id: _format_version_
 OWNER_VERSIONS_PILL_LIMIT = 15
 DEFAULT_DIRECTORY_PAGE_SIZE = 100
 MAX_DIRECTORY_PAGE_SIZE = 1000
+SYMBOL_TYPE_PRIORITY = {
+    "ivar": 0,
+    "property": 1,
+    "class method": 2,
+    "instance method": 3,
+}
 
 
 @app.get("/healthz")
@@ -314,9 +320,11 @@ def view_header(version_id: str, absolute_path: str) -> str:
         "view.html",
         version_id=model.ref.version_id,
         absolute_path=model.ref.absolute_path,
+        file_name=os.path.basename(model.ref.absolute_path.rstrip("/")) or model.ref.absolute_path,
         versions=model.versions,
         rendered_source_html=model.rendered_source_html,
         line_count=len(model.source_text.splitlines()),
+        file_size_text=_format_bytes_for_display(model.ref.pack_length),
         availability_rows=model.availability_rows,
         query_elapsed_ms=query_elapsed_ms,
         show_query_elapsed_ms=settings.show_query_elapsed_ms,
@@ -374,6 +382,14 @@ def _build_view_model(
                 "states": states,
             }
         )
+
+    availability_rows.sort(
+        key=lambda row: (
+            SYMBOL_TYPE_PRIORITY.get(str(row.get("symbol_type", "")).strip().lower(), len(SYMBOL_TYPE_PRIORITY)),
+            str(row.get("owner_name", "")).lower(),
+            str(row.get("symbol_key", "")).lower(),
+        )
+    )
 
     rendered = render_header_with_import_links(
         source_text=source_text,

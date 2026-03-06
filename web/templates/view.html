@@ -9,12 +9,12 @@
 {% block content %}
 <div class="flow">
   <section class="panel stack-4">
-    <h1 class="title-xl">Header View</h1>
-    <p class="path">{{ absolute_path }}</p>
+    <h1 class="title-xl">{{ file_name }}</h1>
+    <p class="path path-view">{{ absolute_path }}</p>
     <div class="meta-row">
-      <a class="chip" href="{{ url_for('search_page') }}">Back</a>
       <span class="chip current">{{ format_version_id(version_id) }}</span>
       <span class="chip">{{ line_count }} lines</span>
+      <span class="chip">{{ file_size_text }}</span>
     </div>
   </section>
 
@@ -24,13 +24,13 @@
   </section>
 
   <section class="panel stack-3">
-    <h2 class="title-lg">Symbol Matrix</h2>
-    {% include "_partials/availability_table.html" %}
-  </section>
-
-  <section class="panel stack-3">
     <h2 class="title-lg">Source</h2>
     <div class="code-block"><code>{{ rendered_source_html|safe }}</code></div>
   </section>
+
+  <details class="panel stack-3 matrix-collapsible">
+    <summary class="title-lg matrix-summary">Symbol Matrix</summary>
+    {% include "_partials/availability_table.html" %}
+  </details>
 </div>
 {% endblock %}

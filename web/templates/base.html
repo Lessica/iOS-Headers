@@ -280,6 +280,12 @@
       margin-top: var(--space-2);
     }
 
+    .version-switch-row .version-pill {
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      line-height: 1.2;
+    }
+
     .version-pill {
       --pill-h: 210;
       display: inline-flex;
@@ -655,12 +661,49 @@
       word-break: break-all;
     }
 
+    .path-view {
+      margin-top: calc(var(--space-5) / 2);
+    }
+
     .top-actions {
       display: flex;
       flex-wrap: wrap;
       gap: var(--space-2);
       align-items: center;
       justify-content: space-between;
+    }
+
+    .matrix-collapsible > summary {
+      list-style: none;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .matrix-collapsible > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .matrix-summary {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .matrix-summary::before {
+      content: "▸";
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      line-height: 1;
+      transform: translateY(1px);
+    }
+
+    .matrix-collapsible[open] .matrix-summary::before {
+      content: "▾";
+    }
+
+    .matrix-collapsible > .table-wrap,
+    .matrix-collapsible > .empty {
+      margin-top: var(--space-3);
     }
 
     table {
@@ -690,6 +733,47 @@
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
+    }
+
+    .matrix-table-wrap {
+      max-height: 70vh;
+    }
+
+    .matrix-table {
+      --matrix-symbol-left: 0px;
+      table-layout: auto;
+    }
+
+    .matrix-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--surface-soft);
+      box-shadow: inset 0 -1px 0 var(--line);
+    }
+
+    .matrix-table th:nth-child(3),
+    .matrix-table td:nth-child(3) {
+      position: sticky;
+      left: var(--matrix-symbol-left);
+      z-index: 5;
+      background: var(--surface);
+      width: auto;
+    }
+
+    .matrix-table th:nth-child(3) {
+      z-index: 6;
+      background: var(--surface-soft);
+    }
+
+    .matrix-table td:nth-child(3) code {
+      display: inline-block;
+      width: max-content;
+      max-width: min(44vw, 520px);
+      white-space: normal;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      vertical-align: bottom;
     }
 
     .state-yes,
