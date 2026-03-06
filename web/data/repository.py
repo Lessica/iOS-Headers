@@ -137,16 +137,17 @@ class Repository:
         rows = self._ch.query(
             """
             SELECT
-                dir,
+                dir_name,
                 count() AS file_count
             FROM
             (
-                SELECT replaceRegexpOne(absolute_path, '/[^/]+$', '') AS dir
+                SELECT
+                    extract(replaceRegexpOne(absolute_path, '/[^/]+$', ''), '[^/]+$') AS dir_name
                 FROM paths
             )
-            WHERE positionCaseInsensitiveUTF8(dir, %(prefix)s) = 1
-            GROUP BY dir
-            ORDER BY dir ASC
+            WHERE positionCaseInsensitiveUTF8(dir_name, %(prefix)s) = 1
+            GROUP BY dir_name
+            ORDER BY dir_name ASC
             LIMIT %(limit)s
             """,
             {"prefix": prefix, "limit": limit},
@@ -204,7 +205,7 @@ class Repository:
             for row in rows
         ]
 
-    def list_files_in_directory(self, version_num: int, directory: str, limit: int = 2000) -> list[FileRef]:
+    def list_files_in_directory_name(self, version_num: int, directory_name: str, limit: int = 2000) -> list[FileRef]:
         rows = self._ch.query(
             """
             SELECT
@@ -216,11 +217,11 @@ class Repository:
             INNER JOIN paths p ON p.path_id = fi.path_id
             INNER JOIN versions v ON v.version_num = fi.version_num
             WHERE fi.version_num = %(version_num)s
-              AND replaceRegexpOne(p.absolute_path, '/[^/]+$', '') = %(directory)s
+                            AND extract(replaceRegexpOne(p.absolute_path, '/[^/]+$', ''), '[^/]+$') = %(directory_name)s
             ORDER BY p.absolute_path ASC
             LIMIT %(limit)s
             """,
-            {"version_num": version_num, "directory": directory, "limit": limit},
+                        {"version_num": version_num, "directory_name": directory_name, "limit": limit},
         )
         return [
             FileRef(

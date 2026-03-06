@@ -42,9 +42,9 @@ def healthz() -> Response:
 @app.get("/")
 def search_page() -> str:
     query = request.args.get("q", "").strip()
-    selected_dir = request.args.get("dir", "").strip()
+    selected_dir_name = request.args.get("dir", "").strip()
 
-    cache_key = _search_cache_key(query=query, selected_dir=selected_dir)
+    cache_key = _search_cache_key(query=query, selected_dir=selected_dir_name)
     cached_html = cache.get_text(cache_key)
     if cached_html is not None:
         return cached_html
@@ -55,13 +55,13 @@ def search_page() -> str:
     latest_version_num = latest[0] if latest else None
 
     directory_files: list[FileRef] = []
-    if selected_dir and latest_version_num is not None:
-        directory_files = repo.list_files_in_directory(latest_version_num, selected_dir)
+    if selected_dir_name and latest_version_num is not None:
+        directory_files = repo.list_files_in_directory_name(latest_version_num, selected_dir_name)
 
     html = render_template(
         "search.html",
         query=query,
-        selected_dir=selected_dir,
+        selected_dir_name=selected_dir_name,
         directory_hits=search_result.directory_hits,
         owner_hits=search_result.owner_hits,
         directory_files=directory_files,
