@@ -4,6 +4,7 @@
 <div class="card">
   <h1>iOS Headers</h1>
   <p class="muted">Cross-version search (English only, no JavaScript).</p>
+  <p class="muted">Query Time: {{ query_elapsed_ms }} ms</p>
   <form method="get" action="{{ url_for('search_page') }}" class="row">
     <input class="search-input" type="text" name="q" value="{{ query }}" placeholder="Search directory name prefix or owner substring" required>
     <button class="btn" type="submit">Search</button>

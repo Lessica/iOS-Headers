@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import unquote
@@ -49,6 +50,8 @@ def search_page() -> str:
     if cached_html is not None:
         return cached_html
 
+    query_started_at = time.perf_counter()
+
     search_result = search_service.search(query)
 
     latest = repo.get_latest_version()
@@ -58,6 +61,8 @@ def search_page() -> str:
     if selected_dir_name and latest_version_num is not None:
         directory_files = repo.list_files_in_directory_name(latest_version_num, selected_dir_name)
 
+    query_elapsed_ms = int((time.perf_counter() - query_started_at) * 1000)
+
     html = render_template(
         "search.html",
         query=query,
@@ -66,6 +71,7 @@ def search_page() -> str:
         owner_hits=search_result.owner_hits,
         directory_files=directory_files,
         latest_version_num=latest_version_num,
+        query_elapsed_ms=query_elapsed_ms,
     )
 
     cache.set_text(cache_key, html, settings.search_cache_ttl_seconds)
@@ -73,7 +79,7 @@ def search_page() -> str:
 
 
 @app.get("/open-latest")
-def open_latest() -> Response:
+def open_latest():
     absolute_path = _normalize_absolute_path(request.args.get("path", ""))
     if not absolute_path:
         abort(404)
@@ -87,6 +93,8 @@ def open_latest() -> Response:
 
 @app.get("/v/<version_id>/<path:absolute_path>")
 def view_header(version_id: str, absolute_path: str) -> str:
+    query_started_at = time.perf_counter()
+
     decoded_version_id = unquote(version_id)
     normalized_path = _normalize_absolute_path(absolute_path)
     if not normalized_path:
@@ -106,6 +114,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
         return cached_html
 
     model = _build_view_model(content_ref)
+    query_elapsed_ms = int((time.perf_counter() - query_started_at) * 1000)
 
     html = render_template(
         "view.html",
@@ -115,6 +124,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
         rendered_source_html=model.rendered_source_html,
         line_count=len(model.source_text.splitlines()),
         availability_rows=model.availability_rows,
+        query_elapsed_ms=query_elapsed_ms,
     )
     cache.set_text(cache_key, html, settings.view_cache_ttl_seconds)
     return html
