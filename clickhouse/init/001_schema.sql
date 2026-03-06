@@ -135,4 +135,5 @@ GROUP BY
     owner_name,
     owner_name_lc,
     symbol_type,
-    symbol_key;
+    symbol_key
+LIMIT 501;
