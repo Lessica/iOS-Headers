@@ -1013,6 +1013,23 @@ def truncate_all(ch: ClickHouseClient, args: argparse.Namespace) -> None:
         )
 
 
+def reload_dictionaries(ch: ClickHouseClient, args: argparse.Namespace) -> None:
+    dictionaries = [
+        "ios_headers.paths_by_absolute_path_dict",
+        "ios_headers.paths_by_id_dict",
+        "ios_headers.contents_by_content_id_dict",
+        "ios_headers.versions_by_num_dict",
+        "ios_headers.versions_by_id_lc_dict",
+    ]
+    for dictionary_name in dictionaries:
+        ch.execute(
+            f"SYSTEM RELOAD DICTIONARY {dictionary_name}",
+            retries=args.max_retries,
+            retry_sleep=args.retry_sleep,
+        )
+    print(f"[setup] dictionaries reloaded={len(dictionaries)}")
+
+
 def main() -> None:
     args = parse_args()
 
@@ -1111,6 +1128,9 @@ def main() -> None:
         "duration_sec": round(duration, 2),
         "mode": "no-dedup",
     }
+
+    reload_dictionaries(ch, args)
+
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
 

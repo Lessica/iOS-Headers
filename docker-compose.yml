@@ -59,6 +59,7 @@ services:
     volumes:
       - ${STACK_DATA_DIR:-./data}/clickhouse:/var/lib/clickhouse
       - ./clickhouse/init:/docker-entrypoint-initdb.d
+      - ./clickhouse/config.d/named_collections.xml:/etc/clickhouse-server/config.d/named_collections.xml:ro
     ulimits:
       nofile:
         soft: 262144

@@ -37,16 +37,17 @@ class Repository:
     def get_latest_version(self) -> tuple[int, str] | None:
         rows = self._ch.query(
             """
-            SELECT version_num, version_id
+            SELECT max(version_num)
             FROM versions
-            ORDER BY version_num DESC
-            LIMIT 1
             """
         )
-        if not rows:
+        if not rows or rows[0][0] is None:
             return None
-        version_num, version_id = rows[0]
-        return int(version_num), str(version_id)
+        version_num = int(rows[0][0])
+        version_id = self.get_version_id(version_num)
+        if version_id is None:
+            return None
+        return version_num, version_id
 
     def get_version_num(self, version_id: str) -> int | None:
         version_id_lc = version_id.lower()
@@ -64,14 +65,15 @@ class Repository:
 
         rows = self._ch.query(
             """
-            SELECT version_num
-            FROM versions
-            WHERE version_id_lc = lowerUTF8(%(version_id)s)
-            LIMIT 1
+            SELECT dictGetOrNull(
+                'ios_headers.versions_by_id_lc_dict',
+                'version_num',
+                lowerUTF8(%(version_id)s)
+            )
             """,
             {"version_id": version_id},
         )
-        if not rows:
+        if not rows or rows[0][0] is None:
             return None
         version_num = int(rows[0][0])
         self._version_num_by_id_lc[version_id_lc] = version_num
@@ -101,14 +103,15 @@ class Repository:
 
         rows = self._ch.query(
             """
-            SELECT version_id
-            FROM versions
-            WHERE version_num = %(version_num)s
-            LIMIT 1
+            SELECT dictGetOrNull(
+                'ios_headers.versions_by_num_dict',
+                'version_id',
+                toUInt32(%(version_num)s)
+            )
             """,
             {"version_num": version_num},
         )
-        if not rows:
+        if not rows or rows[0][0] is None:
             return None
         version_id = str(rows[0][0])
         self._version_id_by_num[version_num] = version_id
@@ -125,15 +128,24 @@ class Repository:
     def resolve_latest_for_path(self, absolute_path: str) -> FileRef | None:
         rows = self._ch.query(
             """
+            WITH dictGetOrNull(
+                'ios_headers.paths_by_absolute_path_dict',
+                'path_id',
+                toString(%(absolute_path)s)
+            ) AS target_path_id
             SELECT
                 fi.version_num,
-                v.version_id,
-                p.path_id,
-                p.absolute_path
-            FROM paths p
-            INNER JOIN file_instances fi ON fi.path_id = p.path_id
-            INNER JOIN versions v ON v.version_num = fi.version_num
-            WHERE p.absolute_path = %(absolute_path)s
+                dictGet(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(fi.version_num)
+                ) AS version_id,
+                fi.path_id,
+                %(absolute_path)s AS absolute_path
+            FROM file_instances fi
+            WHERE isNotNull(target_path_id)
+                AND fi.path_id = target_path_id
+                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
             ORDER BY fi.version_num DESC
             LIMIT 1
             """,
@@ -151,21 +163,42 @@ class Repository:
     def get_file_content_ref(self, version_num: int, absolute_path: str) -> FileContentRef | None:
         rows = self._ch.query(
             """
+            WITH dictGetOrNull(
+                'ios_headers.paths_by_absolute_path_dict',
+                'path_id',
+                toString(%(absolute_path)s)
+            ) AS target_path_id
             SELECT
                 fi.version_num,
-                v.version_id,
-                p.path_id,
+                dictGet(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(fi.version_num)
+                ) AS version_id,
+                fi.path_id,
                 fi.content_id,
-                p.absolute_path,
-                c.pack_object_key,
-                c.pack_offset,
-                c.pack_length
+                %(absolute_path)s AS absolute_path,
+                dictGet(
+                    'ios_headers.contents_by_content_id_dict',
+                    'pack_object_key',
+                    toUInt64(fi.content_id)
+                ) AS pack_object_key,
+                dictGet(
+                    'ios_headers.contents_by_content_id_dict',
+                    'pack_offset',
+                    toUInt64(fi.content_id)
+                ) AS pack_offset,
+                dictGet(
+                    'ios_headers.contents_by_content_id_dict',
+                    'pack_length',
+                    toUInt64(fi.content_id)
+                ) AS pack_length
             FROM file_instances fi
-            INNER JOIN paths p ON p.path_id = fi.path_id
-            INNER JOIN versions v ON v.version_num = fi.version_num
-            INNER JOIN contents c ON c.content_id = fi.content_id
             WHERE fi.version_num = %(version_num)s
-              AND p.absolute_path = %(absolute_path)s
+                AND isNotNull(target_path_id)
+                AND fi.path_id = target_path_id
+                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
+                AND dictHas('ios_headers.contents_by_content_id_dict', toUInt64(fi.content_id))
             LIMIT 1
             """,
             {"version_num": version_num, "absolute_path": absolute_path},
@@ -238,13 +271,17 @@ class Repository:
                         )
                     ) AS priority_rank,
                     bitmapMax(groupBitmapMergeState(sp.version_bitmap)) AS matched_version_num,
-                    p.path_id AS path_id,
-                    p.absolute_path AS absolute_path
+                    sp.path_id AS path_id,
+                    dictGetOrNull(
+                        'ios_headers.paths_by_id_dict',
+                        'absolute_path',
+                        toUInt64(sp.path_id)
+                    ) AS absolute_path
                 FROM symbol_presence sp
-                INNER JOIN paths p ON p.path_id = sp.path_id
                 WHERE sp.owner_name_lc = keyword_lc
                    OR positionUTF8(sp.owner_name_lc, keyword_lc) > 0
-                GROUP BY p.path_id, p.absolute_path
+                GROUP BY sp.path_id
+                HAVING absolute_path IS NOT NULL
             ),
             candidates AS (
                 SELECT * FROM filename_candidates
@@ -262,7 +299,11 @@ class Repository:
                 SELECT
                     c.priority_rank AS best_priority_rank,
                     c.matched_version_num AS max_version_num,
-                    v.version_id AS max_version_id,
+                    dictGetOrNull(
+                        'ios_headers.versions_by_num_dict',
+                        'version_id',
+                        toUInt32(c.matched_version_num)
+                    ) AS max_version_id,
                     c.path_id AS path_id,
                     c.absolute_path AS absolute_path,
                     row_number() OVER (
@@ -271,10 +312,10 @@ class Repository:
                     ) AS rn
                 FROM
                     candidates c
-                INNER JOIN versions v ON v.version_num = c.matched_version_num
                 WHERE c.matched_version_num > 0
             )
             WHERE rn = 1
+              AND max_version_id IS NOT NULL
             ORDER BY best_priority_rank ASC, max_version_num DESC, absolute_path ASC
             LIMIT %(limit)s
             """,
@@ -295,18 +336,30 @@ class Repository:
             """
             SELECT
                 fi.version_num,
-                v.version_id,
-                p.path_id,
-                p.absolute_path
+                dictGet(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(fi.version_num)
+                ) AS version_id,
+                fi.path_id,
+                dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'absolute_path',
+                    toUInt64(fi.path_id)
+                ) AS absolute_path
             FROM file_instances fi
-            INNER JOIN paths p ON p.path_id = fi.path_id
-            INNER JOIN versions v ON v.version_num = fi.version_num
             WHERE fi.version_num = %(version_num)s
-                            AND p.dir_name = %(directory_name)s
-            ORDER BY p.absolute_path ASC
+                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
+                AND dictHas('ios_headers.paths_by_id_dict', toUInt64(fi.path_id))
+                AND dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'dir_name',
+                    toUInt64(fi.path_id)
+                ) = %(directory_name)s
+            ORDER BY absolute_path ASC
             LIMIT %(limit)s
             """,
-                        {"version_num": version_num, "directory_name": directory_name, "limit": limit},
+            {"version_num": version_num, "directory_name": directory_name, "limit": limit},
         )
         return [
             FileRef(
@@ -321,11 +374,17 @@ class Repository:
     def list_versions_for_path(self, path_id: int) -> list[tuple[int, str]]:
         rows = self._ch.query(
             """
-            SELECT fi.version_num, v.version_id
+            SELECT
+                fi.version_num,
+                dictGet(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(fi.version_num)
+                ) AS version_id
             FROM file_instances fi
-            INNER JOIN versions v ON v.version_num = fi.version_num
             WHERE fi.path_id = %(path_id)s
-            GROUP BY fi.version_num, v.version_id
+                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
+            GROUP BY fi.version_num, version_id
             ORDER BY fi.version_num DESC
             """,
             {"path_id": path_id},
@@ -367,11 +426,19 @@ class Repository:
     def list_paths_in_directory(self, version_num: int, directory: str) -> set[str]:
         rows = self._ch.query(
             """
-            SELECT p.absolute_path
+            SELECT dictGet(
+                'ios_headers.paths_by_id_dict',
+                'absolute_path',
+                toUInt64(fi.path_id)
+            ) AS absolute_path
             FROM file_instances fi
-            INNER JOIN paths p ON p.path_id = fi.path_id
             WHERE fi.version_num = %(version_num)s
-                            AND p.dir_path = %(directory)s
+                AND dictHas('ios_headers.paths_by_id_dict', toUInt64(fi.path_id))
+                AND dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'dir_path',
+                    toUInt64(fi.path_id)
+                ) = %(directory)s
             """,
             {"version_num": version_num, "directory": directory},
         )

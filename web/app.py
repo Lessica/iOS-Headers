@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -29,6 +30,8 @@ class ViewModel:
 
 settings = load_settings()
 app = Flask(__name__)
+app.logger.setLevel(logging.INFO)
+timing_logger = logging.getLogger("gunicorn.error")
 cache = RedisCache(settings)
 repo = Repository(ClickHouseClient(settings), cache=cache)
 store = MinioStore(settings)
@@ -117,29 +120,83 @@ def view_latest_header(absolute_path: str) -> Any:
 @app.get("/v/<version_id>/<path:absolute_path>")
 def view_header(version_id: str, absolute_path: str) -> str:
     query_started_at = time.perf_counter()
+    segment_started_at = query_started_at
+    timings_ms: dict[str, int] = {}
 
     decoded_version_id = _decode_version_id_from_url(version_id)
     normalized_path = _normalize_absolute_path(absolute_path)
     if not normalized_path:
         abort(404)
+    timings_ms["decode_and_normalize"] = int((time.perf_counter() - segment_started_at) * 1000)
 
+    segment_started_at = time.perf_counter()
     version_num = repo.get_version_num(decoded_version_id)
     if version_num is None:
         abort(404)
+    timings_ms["resolve_version_num"] = int((time.perf_counter() - segment_started_at) * 1000)
 
+    segment_started_at = time.perf_counter()
     content_ref = repo.get_file_content_ref(version_num=version_num, absolute_path=normalized_path)
     if content_ref is None:
         abort(404)
+    timings_ms["resolve_content_ref"] = int((time.perf_counter() - segment_started_at) * 1000)
 
     cache_key = _view_cache_key(version_num=content_ref.version_num, path_id=content_ref.path_id)
     if settings.enable_redis_page_cache:
+        segment_started_at = time.perf_counter()
         cached_html = cache.get_text(cache_key)
+        timings_ms["view_cache_lookup"] = int((time.perf_counter() - segment_started_at) * 1000)
         if cached_html is not None:
+            total_ms = int((time.perf_counter() - query_started_at) * 1000)
+            _log_view_timing(
+                version_id=decoded_version_id,
+                absolute_path=normalized_path,
+                total_ms=total_ms,
+                cache_hit=True,
+                timings_ms=timings_ms,
+            )
             return cached_html
 
-    model = _build_view_model(content_ref)
+    segment_started_at = time.perf_counter()
+    source_bytes = store.read_slice(
+        object_key=content_ref.pack_object_key,
+        offset=content_ref.pack_offset,
+        length=content_ref.pack_length,
+    )
+    source_text = source_bytes.decode("utf-8", errors="replace")
+    timings_ms["minio_read_slice"] = int((time.perf_counter() - segment_started_at) * 1000)
+
+    segment_started_at = time.perf_counter()
+    versions = repo.list_versions_for_path(content_ref.path_id)
+    timings_ms["query_versions_for_path"] = int((time.perf_counter() - segment_started_at) * 1000)
+
+    segment_started_at = time.perf_counter()
+    symbols = repo.list_symbols_for_content(content_ref.content_id)
+    timings_ms["query_symbols_for_content"] = int((time.perf_counter() - segment_started_at) * 1000)
+
+    segment_started_at = time.perf_counter()
+    presence_map = repo.get_symbol_presence_map(content_ref.path_id)
+    timings_ms["query_symbol_presence_map"] = int((time.perf_counter() - segment_started_at) * 1000)
+
+    segment_started_at = time.perf_counter()
+    same_directory = os.path.dirname(content_ref.absolute_path)
+    same_directory_files = repo.list_paths_in_directory(content_ref.version_num, same_directory)
+    timings_ms["query_same_directory_paths"] = int((time.perf_counter() - segment_started_at) * 1000)
+
+    segment_started_at = time.perf_counter()
+    model = _build_view_model(
+        content_ref=content_ref,
+        source_text=source_text,
+        versions=versions,
+        symbols=symbols,
+        presence_map=presence_map,
+        same_directory_files=same_directory_files,
+    )
+    timings_ms["build_view_model"] = int((time.perf_counter() - segment_started_at) * 1000)
+
     query_elapsed_ms = int((time.perf_counter() - query_started_at) * 1000)
 
+    segment_started_at = time.perf_counter()
     html = render_template(
         "view.html",
         version_id=model.ref.version_id,
@@ -151,8 +208,21 @@ def view_header(version_id: str, absolute_path: str) -> str:
         query_elapsed_ms=query_elapsed_ms,
         show_query_elapsed_ms=settings.show_query_elapsed_ms,
     )
+    timings_ms["render_template"] = int((time.perf_counter() - segment_started_at) * 1000)
+
     if settings.enable_redis_page_cache:
+        segment_started_at = time.perf_counter()
         cache.set_text(cache_key, html, settings.view_cache_ttl_seconds)
+        timings_ms["view_cache_store"] = int((time.perf_counter() - segment_started_at) * 1000)
+
+    total_ms = int((time.perf_counter() - query_started_at) * 1000)
+    _log_view_timing(
+        version_id=decoded_version_id,
+        absolute_path=normalized_path,
+        total_ms=total_ms,
+        cache_hit=False,
+        timings_ms=timings_ms,
+    )
     return html
 
 
@@ -161,19 +231,15 @@ def not_found(_: Exception) -> tuple[str, int]:
     return render_template("not_found.html"), 404
 
 
-def _build_view_model(content_ref: FileContentRef) -> ViewModel:
-    source_bytes = store.read_slice(
-        object_key=content_ref.pack_object_key,
-        offset=content_ref.pack_offset,
-        length=content_ref.pack_length,
-    )
-    source_text = source_bytes.decode("utf-8", errors="replace")
-
-    versions = repo.list_versions_for_path(content_ref.path_id)
+def _build_view_model(
+    content_ref: FileContentRef,
+    source_text: str,
+    versions: list[tuple[int, str]],
+    symbols: list[tuple[str, str, str]],
+    presence_map: dict[tuple[str, str, str], set[int]],
+    same_directory_files: set[str],
+) -> ViewModel:
     version_by_num = {version_num: version_id for version_num, version_id in versions}
-
-    symbols = repo.list_symbols_for_content(content_ref.content_id)
-    presence_map = repo.get_symbol_presence_map(content_ref.path_id)
 
     availability_rows: list[dict[str, Any]] = []
     for owner_name, symbol_type, symbol_key in symbols:
@@ -196,8 +262,6 @@ def _build_view_model(content_ref: FileContentRef) -> ViewModel:
             }
         )
 
-    same_directory = os.path.dirname(content_ref.absolute_path)
-    same_directory_files = repo.list_paths_in_directory(content_ref.version_num, same_directory)
     rendered = render_header_with_import_links(
         source_text=source_text,
         version_id=content_ref.version_id,
@@ -258,6 +322,24 @@ def _search_cache_key(query: str, selected_dir: str) -> str:
     payload = f"q={query}|dir={selected_dir}"
     digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
     return f"html:search:{digest}"
+
+
+def _log_view_timing(
+    version_id: str,
+    absolute_path: str,
+    total_ms: int,
+    cache_hit: bool,
+    timings_ms: dict[str, int],
+) -> None:
+    segments = " ".join(f"{name}={value}ms" for name, value in timings_ms.items())
+    timing_logger.info(
+        "view_timing version_id=%s path=%s total=%dms cache_hit=%s %s",
+        version_id,
+        absolute_path,
+        total_ms,
+        str(cache_hit).lower(),
+        segments,
+    )
 
 
 if __name__ == "__main__":

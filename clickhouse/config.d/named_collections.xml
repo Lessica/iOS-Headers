@@ -1,0 +1,10 @@
+<clickhouse>
+  <named_collections>
+    <ios_headers_internal>
+      <host>localhost</host>
+      <port>9000</port>
+      <user from_env="CLICKHOUSE_USER"/>
+      <password from_env="CLICKHOUSE_PASSWORD"/>
+    </ios_headers_internal>
+  </named_collections>
+</clickhouse>

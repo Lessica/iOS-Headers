@@ -47,6 +47,12 @@ CREATE INDEX IF NOT EXISTS idx_paths_dir_name_bf ON ios_headers.paths (dir_name_
 TYPE tokenbf_v1(32768, 3, 0)
 GRANULARITY 64;
 
+CREATE INDEX IF NOT EXISTS idx_paths_absolute_path_bf ON ios_headers.paths (absolute_path)
+TYPE bloom_filter(0.01)
+GRANULARITY 64;
+
+ALTER TABLE ios_headers.paths MATERIALIZE INDEX idx_paths_absolute_path_bf;
+
 CREATE TABLE IF NOT EXISTS ios_headers.contents (
     content_id UInt64,
     content_hash FixedString(32),
@@ -112,3 +118,99 @@ SETTINGS index_granularity = 8192;
 CREATE INDEX IF NOT EXISTS idx_symbol_presence_owner_name_ngram ON ios_headers.symbol_presence (owner_name_lc)
 TYPE ngrambf_v1(3, 32768, 3, 0)
 GRANULARITY 64;
+
+DROP DICTIONARY IF EXISTS ios_headers.paths_by_absolute_path_dict;
+
+CREATE DICTIONARY IF NOT EXISTS ios_headers.paths_by_absolute_path_dict
+(
+    absolute_path String,
+    path_id UInt64
+)
+PRIMARY KEY absolute_path
+SOURCE(
+    CLICKHOUSE(
+        NAME 'ios_headers_internal'
+        DB 'ios_headers'
+        TABLE 'paths'
+    )
+)
+LAYOUT(HASHED())
+LIFETIME(0);
+
+DROP DICTIONARY IF EXISTS ios_headers.paths_by_id_dict;
+
+CREATE DICTIONARY IF NOT EXISTS ios_headers.paths_by_id_dict
+(
+    path_id UInt64,
+    absolute_path String,
+    dir_name String,
+    dir_path String,
+    file_name_lc String
+)
+PRIMARY KEY path_id
+SOURCE(
+    CLICKHOUSE(
+        NAME 'ios_headers_internal'
+        DB 'ios_headers'
+        TABLE 'paths'
+    )
+)
+LAYOUT(HASHED())
+LIFETIME(0);
+
+DROP DICTIONARY IF EXISTS ios_headers.contents_by_content_id_dict;
+
+CREATE DICTIONARY IF NOT EXISTS ios_headers.contents_by_content_id_dict
+(
+    content_id UInt64,
+    pack_object_key String,
+    pack_offset UInt64,
+    pack_length UInt32
+)
+PRIMARY KEY content_id
+SOURCE(
+    CLICKHOUSE(
+        NAME 'ios_headers_internal'
+        DB 'ios_headers'
+        TABLE 'contents'
+    )
+)
+LAYOUT(HASHED())
+LIFETIME(0);
+
+DROP DICTIONARY IF EXISTS ios_headers.versions_by_num_dict;
+
+CREATE DICTIONARY IF NOT EXISTS ios_headers.versions_by_num_dict
+(
+    version_num UInt32,
+    version_id String
+)
+PRIMARY KEY version_num
+SOURCE(
+    CLICKHOUSE(
+        NAME 'ios_headers_internal'
+        DB 'ios_headers'
+        TABLE 'versions'
+    )
+)
+LAYOUT(HASHED())
+LIFETIME(0);
+
+DROP DICTIONARY IF EXISTS ios_headers.versions_by_id_lc_dict;
+
+CREATE DICTIONARY IF NOT EXISTS ios_headers.versions_by_id_lc_dict
+(
+    version_id_lc String,
+    version_num UInt32,
+    version_id String
+)
+PRIMARY KEY version_id_lc
+SOURCE(
+    CLICKHOUSE(
+        NAME 'ios_headers_internal'
+        DB 'ios_headers'
+        TABLE 'versions'
+    )
+)
+LAYOUT(HASHED())
+LIFETIME(0);
