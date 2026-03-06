@@ -136,16 +136,12 @@ class Repository:
     def search_directories(self, prefix: str, limit: int = 30) -> list[tuple[str, int]]:
         rows = self._ch.query(
             """
+            WITH lowerUTF8(%(prefix)s) AS prefix_lc
             SELECT
                 dir_name,
                 count() AS file_count
-            FROM
-            (
-                SELECT
-                    extract(replaceRegexpOne(absolute_path, '/[^/]+$', ''), '[^/]+$') AS dir_name
-                FROM paths
-            )
-            WHERE positionCaseInsensitiveUTF8(dir_name, %(prefix)s) = 1
+            FROM paths
+            WHERE startsWith(dir_name_lc, prefix_lc)
             GROUP BY dir_name
             ORDER BY dir_name ASC
             LIMIT %(limit)s
@@ -180,15 +176,15 @@ class Repository:
                         p.path_id AS path_id,
                         p.absolute_path AS absolute_path,
                         if(
-                            lowerUTF8(extract(p.absolute_path, '[^/]+$')) = keyword_lc,
+                            p.file_name_lc = keyword_lc,
                             0,
                             10
                         ) AS priority_rank
                     FROM file_instances fi
                     INNER JOIN paths p ON p.path_id = fi.path_id
                     INNER JOIN versions v ON v.version_num = fi.version_num
-                    WHERE lowerUTF8(extract(p.absolute_path, '[^/]+$')) = keyword_lc
-                       OR positionCaseInsensitiveUTF8(extract(p.absolute_path, '[^/]+$'), %(keyword)s) > 0
+                    WHERE p.file_name_lc = keyword_lc
+                       OR positionCaseInsensitiveUTF8(p.file_name, %(keyword)s) > 0
 
                     UNION ALL
 
@@ -201,14 +197,14 @@ class Repository:
                             multiIf(
                                 lowerUTF8(s.owner_name) = keyword_lc AND (
                                     lowerUTF8(s.owner_kind) = 'category'
-                                    OR positionUTF8(extract(p.absolute_path, '[^/]+$'), '+') > 0
+                                    OR p.is_category_file = 1
                                 ), 3,
                                 lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'interface', 1,
                                 lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'protocol', 2,
                                 lowerUTF8(s.owner_name) = keyword_lc, 4,
                                 positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND (
                                     lowerUTF8(s.owner_kind) = 'category'
-                                    OR positionUTF8(extract(p.absolute_path, '[^/]+$'), '+') > 0
+                                    OR p.is_category_file = 1
                                 ), 13,
                                 positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'interface', 11,
                                 positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'protocol', 12,
@@ -252,7 +248,7 @@ class Repository:
             INNER JOIN paths p ON p.path_id = fi.path_id
             INNER JOIN versions v ON v.version_num = fi.version_num
             WHERE fi.version_num = %(version_num)s
-                            AND extract(replaceRegexpOne(p.absolute_path, '/[^/]+$', ''), '[^/]+$') = %(directory_name)s
+                            AND p.dir_name = %(directory_name)s
             ORDER BY p.absolute_path ASC
             LIMIT %(limit)s
             """,
@@ -316,7 +312,7 @@ class Repository:
             FROM file_instances fi
             INNER JOIN paths p ON p.path_id = fi.path_id
             WHERE fi.version_num = %(version_num)s
-              AND replaceRegexpOne(p.absolute_path, '/[^/]+$', '') = %(directory)s
+                            AND p.dir_path = %(directory)s
             """,
             {"version_num": version_num, "directory": directory},
         )

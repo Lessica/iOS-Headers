@@ -15,6 +15,12 @@ CREATE TABLE IF NOT EXISTS ios_headers.paths (
     path_id UInt64,
     absolute_path String,
     path_lc String MATERIALIZED lowerUTF8(absolute_path),
+    file_name String MATERIALIZED extract(absolute_path, '[^/]+$'),
+    file_name_lc String MATERIALIZED lowerUTF8(file_name),
+    dir_path String MATERIALIZED replaceRegexpOne(absolute_path, '/[^/]+$', ''),
+    dir_name String MATERIALIZED extract(dir_path, '[^/]+$'),
+    dir_name_lc String MATERIALIZED lowerUTF8(dir_name),
+    is_category_file UInt8 MATERIALIZED toUInt8(positionUTF8(file_name, '+') > 0),
     created_at DateTime DEFAULT now()
 )
 ENGINE = MergeTree
@@ -22,6 +28,14 @@ ORDER BY (path_id)
 SETTINGS index_granularity = 8192;
 
 CREATE INDEX IF NOT EXISTS idx_paths_bf ON ios_headers.paths (path_lc)
+TYPE tokenbf_v1(32768, 3, 0)
+GRANULARITY 64;
+
+CREATE INDEX IF NOT EXISTS idx_paths_file_name_bf ON ios_headers.paths (file_name_lc)
+TYPE tokenbf_v1(32768, 3, 0)
+GRANULARITY 64;
+
+CREATE INDEX IF NOT EXISTS idx_paths_dir_name_bf ON ios_headers.paths (dir_name_lc)
 TYPE tokenbf_v1(32768, 3, 0)
 GRANULARITY 64;
 

@@ -144,8 +144,20 @@ check() {
 
 init_db() {
   require_tools
-  compose exec -T clickhouse clickhouse-client < "$ROOT_DIR/clickhouse/init/001_schema.sql"
+  local sql_file
+  for sql_file in "$ROOT_DIR"/clickhouse/init/*.sql; do
+    compose exec -T clickhouse clickhouse-client < "$sql_file"
+  done
   echo "schema initialized"
+}
+
+migrate_db() {
+  require_tools
+  local sql_file
+  for sql_file in "$ROOT_DIR"/clickhouse/init/*.sql; do
+    compose exec -T clickhouse clickhouse-client < "$sql_file"
+  done
+  echo "schema migrations applied"
 }
 
 init_minio() {
@@ -167,7 +179,7 @@ clear_cache() {
 }
 
 usage() {
-  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|init-minio|rebuild-web|clear-cache}"
+  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|migrate-db|init-minio|rebuild-web|clear-cache}"
 }
 
 case "${1:-}" in
@@ -178,6 +190,7 @@ case "${1:-}" in
   logs) shift; logs "${1:-}" ;;
   check) check ;;
   init-db) init_db ;;
+  migrate-db) migrate_db ;;
   init-minio) init_minio ;;
   rebuild-web) rebuild_web ;;
   clear-cache) clear_cache ;;
