@@ -60,7 +60,14 @@ CREATE TABLE IF NOT EXISTS ios_headers.file_instances (
     version_num UInt32,
     path_id UInt64,
     content_id UInt64,
-    updated_at DateTime DEFAULT now()
+    updated_at DateTime DEFAULT now(),
+    PROJECTION prj_latest_version_by_path
+    (
+        SELECT
+            path_id,
+            max(version_num)
+        GROUP BY path_id
+    )
 )
 ENGINE = MergeTree
 PARTITION BY version_num
@@ -97,6 +104,10 @@ CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
 ENGINE = AggregatingMergeTree()
 ORDER BY (path_id, owner_kind, symbol_type, symbol_key, owner_name)
 SETTINGS index_granularity = 8192;
+
+CREATE INDEX IF NOT EXISTS idx_symbol_presence_owner_name_ngram ON ios_headers.symbol_presence (owner_name_lc)
+TYPE ngrambf_v1(3, 32768, 3, 0)
+GRANULARITY 64;
 
 CREATE VIEW IF NOT EXISTS ios_headers.symbol_presence_readable AS
 SELECT
