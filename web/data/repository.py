@@ -157,7 +157,9 @@ class Repository:
     def search_owner_candidates(self, keyword: str, limit: int = 50) -> list[FileRef]:
         rows = self._ch.query(
             """
+            WITH lowerUTF8(%(keyword)s) AS keyword_lc
             SELECT
+                best_match_rank,
                 max_version_num,
                 max_version_id,
                 path_id,
@@ -165,42 +167,54 @@ class Repository:
             FROM
             (
                 SELECT
-                    max(fi.version_num) AS max_version_num,
-                    argMax(v.version_id, fi.version_num) AS max_version_id,
-                    p.path_id AS path_id,
-                    p.absolute_path AS absolute_path
-                FROM file_instances fi
-                INNER JOIN paths p ON p.path_id = fi.path_id
-                INNER JOIN versions v ON v.version_num = fi.version_num
-                WHERE positionCaseInsensitiveUTF8(extract(p.absolute_path, '[^/]+$'), %(keyword)s) > 0
-                GROUP BY p.path_id, p.absolute_path
+                    min(match_rank) AS best_match_rank,
+                    max(version_num) AS max_version_num,
+                    argMax(version_id, version_num) AS max_version_id,
+                    path_id,
+                    argMax(absolute_path, version_num) AS absolute_path
+                FROM
+                (
+                    SELECT
+                        fi.version_num,
+                        v.version_id,
+                        p.path_id,
+                        p.absolute_path,
+                        if(lowerUTF8(extract(p.absolute_path, '[^/]+$')) = keyword_lc, 0, 1) AS match_rank
+                    FROM file_instances fi
+                    INNER JOIN paths p ON p.path_id = fi.path_id
+                    INNER JOIN versions v ON v.version_num = fi.version_num
+                    WHERE lowerUTF8(extract(p.absolute_path, '[^/]+$')) = keyword_lc
+                       OR positionCaseInsensitiveUTF8(extract(p.absolute_path, '[^/]+$'), %(keyword)s) > 0
 
-                UNION ALL
+                    UNION ALL
 
-                SELECT
-                    max(fi.version_num) AS max_version_num,
-                    argMax(v.version_id, fi.version_num) AS max_version_id,
-                    p.path_id AS path_id,
-                    argMax(p.absolute_path, fi.version_num) AS absolute_path
-                FROM symbols s
-                INNER JOIN file_instances fi ON fi.content_id = s.content_id
-                INNER JOIN paths p ON p.path_id = fi.path_id
-                INNER JOIN versions v ON v.version_num = fi.version_num
-                WHERE positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0
-                GROUP BY s.owner_kind, s.owner_name, p.path_id
+                    SELECT
+                        fi.version_num,
+                        v.version_id,
+                        p.path_id,
+                        p.absolute_path,
+                        min(if(lowerUTF8(s.owner_name) = keyword_lc, 0, 1)) AS match_rank
+                    FROM symbols s
+                    INNER JOIN file_instances fi ON fi.content_id = s.content_id
+                    INNER JOIN paths p ON p.path_id = fi.path_id
+                    INNER JOIN versions v ON v.version_num = fi.version_num
+                    WHERE lowerUTF8(s.owner_name) = keyword_lc
+                       OR positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0
+                    GROUP BY fi.version_num, v.version_id, p.path_id, p.absolute_path
+                ) AS owner_matches
+                GROUP BY path_id
             )
-            GROUP BY path_id, absolute_path, max_version_num, max_version_id
-            ORDER BY max_version_num DESC, absolute_path ASC
+            ORDER BY best_match_rank ASC, max_version_num DESC, absolute_path ASC
             LIMIT %(limit)s
             """,
             {"keyword": keyword, "limit": limit},
         )
         return [
             FileRef(
-                version_num=int(row[0]),
-                version_id=str(row[1]),
-                path_id=int(row[2]),
-                absolute_path=str(row[3]),
+                version_num=int(row[1]),
+                version_id=str(row[2]),
+                path_id=int(row[3]),
+                absolute_path=str(row[4]),
             )
             for row in rows
         ]
