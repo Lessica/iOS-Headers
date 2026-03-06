@@ -16,7 +16,7 @@ class RenderedHeader:
 
 
 def _build_view_link(version_id: str, absolute_path: str) -> str:
-    encoded_version = quote(version_id, safe="")
+    encoded_version = quote(version_id.replace("_", "__").replace("|", "_"), safe="")
     normalized = absolute_path.lstrip("/")
     encoded_path = "/".join(quote(segment, safe="") for segment in normalized.split("/") if segment)
     return f"/v/{encoded_version}/{encoded_path}"

@@ -20,7 +20,7 @@
     <ul class="list">
       {% for directory_name, file_count in directory_hits %}
       <li>
-        <a href="{{ url_for('search_page', q=query, dir=directory_name) }}">{{ directory_name }}</a>
+        <a href="{{ url_for('directory_page', directory_name=directory_name) }}">{{ directory_name }}</a>
         <span class="chip">{{ file_count }} files</span>
       </li>
       {% endfor %}
@@ -37,7 +37,7 @@
     <ul class="list">
       {% for item in owner_hits %}
       <li>
-        <a href="{{ url_for('view_header', version_id=item.version_id, absolute_path=item.absolute_path.lstrip('/')) }}">{{ item.absolute_path }}</a>
+        <a href="{{ url_for('view_header', version_id=encode_version_id(item.version_id), absolute_path=item.absolute_path.lstrip('/')) }}">{{ item.absolute_path }}</a>
         <div class="muted">version: {{ item.version_id }} ({{ item.version_num }})</div>
       </li>
       {% endfor %}
@@ -57,7 +57,7 @@
   <ul class="list">
     {% for file in directory_files %}
     <li>
-      <a href="{{ url_for('open_latest', path=file.absolute_path) }}">{{ file.absolute_path }}</a>
+      <a href="{{ url_for('view_latest_header', absolute_path=file.absolute_path.lstrip('/')) }}">{{ file.absolute_path }}</a>
     </li>
     {% endfor %}
   </ul>

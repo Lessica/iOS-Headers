@@ -33,6 +33,7 @@ cache = RedisCache(settings)
 repo = Repository(ClickHouseClient(settings), cache=cache)
 store = MinioStore(settings)
 search_service = SearchService(repo)
+app.jinja_env.globals["encode_version_id"] = lambda version_id: _encode_version_id_for_url(version_id)
 
 
 @app.get("/healthz")
@@ -44,6 +45,20 @@ def healthz() -> Response:
 def search_page() -> str:
     query = request.args.get("q", "").strip()
     selected_dir_name = request.args.get("dir", "").strip()
+
+    return _render_search_page(query=query, selected_dir_name=selected_dir_name)
+
+
+@app.get("/d/<path:directory_name>")
+def directory_page(directory_name: str) -> str:
+    selected_dir_name = unquote(directory_name).strip()
+    if not selected_dir_name:
+        abort(404)
+
+    return _render_search_page(query="", selected_dir_name=selected_dir_name)
+
+
+def _render_search_page(query: str, selected_dir_name: str) -> str:
 
     cache_key = _search_cache_key(query=query, selected_dir=selected_dir_name)
     cached_html = cache.get_text(cache_key)
@@ -78,24 +93,27 @@ def search_page() -> str:
     return html
 
 
-@app.get("/open-latest")
-def open_latest():
-    absolute_path = _normalize_absolute_path(request.args.get("path", ""))
-    if not absolute_path:
+@app.get("/v/latest/<path:absolute_path>")
+def view_latest_header(absolute_path: str) -> str:
+    normalized_path = _normalize_absolute_path(absolute_path)
+    if not normalized_path:
         abort(404)
 
-    result = repo.resolve_latest_for_path(absolute_path)
+    result = repo.resolve_latest_for_path(normalized_path)
     if result is None:
         abort(404)
 
-    return redirect(url_for("view_header", version_id=result.version_id, absolute_path=result.absolute_path.lstrip("/")))
+    return view_header(
+        version_id=_encode_version_id_for_url(result.version_id),
+        absolute_path=result.absolute_path.lstrip("/"),
+    )
 
 
 @app.get("/v/<version_id>/<path:absolute_path>")
 def view_header(version_id: str, absolute_path: str) -> str:
     query_started_at = time.perf_counter()
 
-    decoded_version_id = unquote(version_id)
+    decoded_version_id = _decode_version_id_from_url(version_id)
     normalized_path = _normalize_absolute_path(absolute_path)
     if not normalized_path:
         abort(404)
@@ -195,6 +213,33 @@ def _normalize_absolute_path(raw_path: str) -> str:
     if not candidate.startswith("/"):
         candidate = f"/{candidate}"
     return candidate
+
+
+def _encode_version_id_for_url(version_id: str) -> str:
+    escaped = version_id.replace("_", "__")
+    return escaped.replace("|", "_")
+
+
+def _decode_version_id_from_url(raw_version_id: str) -> str:
+    decoded = unquote(raw_version_id)
+    chars: list[str] = []
+    index = 0
+    while index < len(decoded):
+        char = decoded[index]
+        if char != "_":
+            chars.append(char)
+            index += 1
+            continue
+
+        if index + 1 < len(decoded) and decoded[index + 1] == "_":
+            chars.append("_")
+            index += 2
+            continue
+
+        chars.append("|")
+        index += 1
+
+    return "".join(chars)
 
 
 def _view_cache_key(version_num: int, path_id: int) -> str:

@@ -117,12 +117,14 @@
   - `Directory`：目录名前缀匹配（如 `Back` → `BackBoardServices`）
   - `Owner`：`filename/interface/protocol/category(host class)` 子串匹配
 - 结果交互：
-  - 选择 `Directory` 结果：停留在搜索页并展示该目录下所有文件（基于最新版本号）
+  - 选择 `Directory` 结果：跳转到目录伪静态页 `/d/{directory_name}` 并展示该目录下所有文件（基于最新版本号）
   - 选择 `Owner` 结果：直接跳转到查看页（默认打开该结果存在的最新版本）
 
-### 查看页（`/v/{version_id}/{absolute_path}`）
+### 查看页（`/v/{version_id}/{absolute_path}` 或 `/v/latest/{absolute_path}`）
 
 - 展示指定版本与路径的头文件正文
+- `latest` 伪静态路径会自动解析到该文件的最新可用版本
+- URL 中的 `version_id` 使用 `_` 表示原始 `|`（例如 `15.2_19C56` 对应 `15.2|19C56`）
 - 支持同一路径的跨版本切换
 - 显示符号在各版本上的可用性（YES/NO）
 - `#import/#include` 仅按同目录文件生成内部超链接
