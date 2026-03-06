@@ -29,7 +29,7 @@ class ViewModel:
 settings = load_settings()
 app = Flask(__name__)
 cache = RedisCache(settings)
-repo = Repository(ClickHouseClient(settings))
+repo = Repository(ClickHouseClient(settings), cache=cache)
 store = MinioStore(settings)
 search_service = SearchService(repo)
 

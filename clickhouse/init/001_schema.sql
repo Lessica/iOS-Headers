@@ -3,6 +3,7 @@ CREATE DATABASE IF NOT EXISTS ios_headers;
 CREATE TABLE IF NOT EXISTS ios_headers.versions (
     version_num UInt32,
     version_id String,
+    version_id_lc String MATERIALIZED lowerUTF8(version_id),
     ios_version String,
     build String,
     bundle_name String,
@@ -10,6 +11,10 @@ CREATE TABLE IF NOT EXISTS ios_headers.versions (
 )
 ENGINE = MergeTree
 ORDER BY (version_num);
+
+CREATE INDEX IF NOT EXISTS idx_versions_version_id_bf ON ios_headers.versions (version_id_lc)
+TYPE tokenbf_v1(32768, 3, 0)
+GRANULARITY 64;
 
 CREATE TABLE IF NOT EXISTS ios_headers.paths (
     path_id UInt64,

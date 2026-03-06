@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from web.data.cache import RedisCache
 from web.data.ch_client import ClickHouseClient
 
 
@@ -26,8 +27,12 @@ class FileContentRef:
 
 
 class Repository:
-    def __init__(self, ch: ClickHouseClient) -> None:
+    def __init__(self, ch: ClickHouseClient, cache: RedisCache | None = None) -> None:
         self._ch = ch
+        self._cache = cache
+        self._version_num_by_id_lc: dict[str, int] = {}
+        self._version_id_by_num: dict[int, str] = {}
+        self._version_cache_ttl_seconds = 60 * 60 * 24
 
     def get_latest_version(self) -> tuple[int, str] | None:
         rows = self._ch.query(
@@ -44,20 +49,56 @@ class Repository:
         return int(version_num), str(version_id)
 
     def get_version_num(self, version_id: str) -> int | None:
+        version_id_lc = version_id.lower()
+        cached = self._version_num_by_id_lc.get(version_id_lc)
+        if cached is not None:
+            return cached
+
+        redis_key = f"cache:version:num-by-id:{version_id_lc}"
+        if self._cache is not None:
+            redis_value = self._cache.get_text(redis_key)
+            if redis_value is not None:
+                version_num = int(redis_value)
+                self._version_num_by_id_lc[version_id_lc] = version_num
+                return version_num
+
         rows = self._ch.query(
             """
             SELECT version_num
             FROM versions
-            WHERE version_id = %(version_id)s
+            WHERE version_id_lc = lowerUTF8(%(version_id)s)
             LIMIT 1
             """,
             {"version_id": version_id},
         )
         if not rows:
             return None
-        return int(rows[0][0])
+        version_num = int(rows[0][0])
+        self._version_num_by_id_lc[version_id_lc] = version_num
+        self._version_id_by_num[version_num] = version_id
+        if self._cache is not None:
+            self._cache.set_text(redis_key, str(version_num), self._version_cache_ttl_seconds)
+            self._cache.set_text(
+                f"cache:version:id-by-num:{version_num}",
+                version_id,
+                self._version_cache_ttl_seconds,
+            )
+        return version_num
 
     def get_version_id(self, version_num: int) -> str | None:
+        cached = self._version_id_by_num.get(version_num)
+        if cached is not None:
+            return cached
+
+        redis_key = f"cache:version:id-by-num:{version_num}"
+        if self._cache is not None:
+            redis_value = self._cache.get_text(redis_key)
+            if redis_value is not None:
+                version_id = str(redis_value)
+                self._version_id_by_num[version_num] = version_id
+                self._version_num_by_id_lc[version_id.lower()] = version_num
+                return version_id
+
         rows = self._ch.query(
             """
             SELECT version_id
@@ -69,7 +110,17 @@ class Repository:
         )
         if not rows:
             return None
-        return str(rows[0][0])
+        version_id = str(rows[0][0])
+        self._version_id_by_num[version_num] = version_id
+        self._version_num_by_id_lc[version_id.lower()] = version_num
+        if self._cache is not None:
+            self._cache.set_text(redis_key, version_id, self._version_cache_ttl_seconds)
+            self._cache.set_text(
+                f"cache:version:num-by-id:{version_id.lower()}",
+                str(version_num),
+                self._version_cache_ttl_seconds,
+            )
+        return version_id
 
     def resolve_latest_for_path(self, absolute_path: str) -> FileRef | None:
         rows = self._ch.query(
