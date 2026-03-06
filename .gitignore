@@ -1,9 +1,9 @@
 /.caches
 /.files
 /.firmwares
-/.headers
-/data/
 /.env
+/.headers
+/data
 *.dmg
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,macos
