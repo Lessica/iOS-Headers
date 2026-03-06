@@ -1,10 +1,6 @@
-/caches
-/entitlements
-/files
-/firmwares
-/headers
-/sites/entitlements/data
-/sites/ios-headers/data
+/.caches
+/.files
+/.headers
 /data/
 /.env
 *.dmg

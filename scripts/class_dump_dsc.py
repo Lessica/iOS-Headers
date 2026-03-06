@@ -33,14 +33,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--firmwares-root",
         type=Path,
-        default=Path("files"),
-        help="Root directory that contains firmware folders (default: files)",
+        default=Path(".files"),
+        help="Root directory that contains firmware folders (default: .files)",
     )
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path("headers"),
-        help="Root directory for class-dump headers output (default: headers)",
+        default=Path(".headers"),
+        help="Root directory for class-dump headers output (default: .headers)",
     )
     parser.add_argument(
         "--cache-relpath",

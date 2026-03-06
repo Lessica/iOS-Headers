@@ -22,14 +22,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--firmwares-root",
         type=Path,
-        default=Path("files"),
-        help="Root directory that contains firmware folders (default: files)",
+        default=Path(".files"),
+        help="Root directory that contains firmware folders (default: .files)",
     )
     parser.add_argument(
         "--output-root",
         type=Path,
-        default=Path("caches"),
-        help="Root directory for split outputs (default: caches)",
+        default=Path(".caches"),
+        help="Root directory for split outputs (default: .caches)",
     )
     parser.add_argument(
         "--cache-relpath",

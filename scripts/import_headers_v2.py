@@ -251,8 +251,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Import iOS headers into ClickHouse (v2, no content dedup)."
     )
-    parser.add_argument("--headers-root", type=Path, default=Path("headers"))
-    parser.add_argument("--files-root", type=Path, default=Path("files"))
+    parser.add_argument("--headers-root", type=Path, default=Path(".headers"))
+    parser.add_argument("--files-root", type=Path, default=Path(".files"))
     parser.add_argument("--state-file", type=Path, default=Path("data/import_state_v2_no_dedup.json"))
     parser.add_argument("--clickhouse-host", default="127.0.0.1")
     parser.add_argument("--clickhouse-port", type=int, default=19000)
