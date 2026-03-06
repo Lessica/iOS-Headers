@@ -1,0 +1,13 @@
+{% if versions %}
+<div class="meta-row" aria-label="Available versions">
+  {% for version_num, candidate_version_id in versions %}
+    {% if candidate_version_id == version_id %}
+      <span class="chip current">{{ candidate_version_id }}</span>
+    {% else %}
+      <a class="chip" href="{{ url_for('view_header', version_id=encode_version_id(candidate_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ candidate_version_id }}</a>
+    {% endif %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">No additional versions.</div>
+{% endif %}

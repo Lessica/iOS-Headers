@@ -1,0 +1,17 @@
+<form method="get" action="{{ url_for('search_page') }}" class="search-form{% if search_mode == 'home' %} search-form-google{% endif %}" role="search" aria-label="Header search form">
+  <label class="sr-only" for="q">Search keyword</label>
+  <div class="search-form-row">
+    <input
+      class="search-input"
+      id="q"
+      type="text"
+      name="q"
+      value="{{ query }}"
+      placeholder="Search by framework, class owner, or directory"
+      required
+      autocomplete="off"
+      spellcheck="false"
+    >
+    <button class="btn btn-primary" type="submit">{% if search_mode == 'home' %}Search{% else %}Go{% endif %}</button>
+  </div>
+</form>

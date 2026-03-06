@@ -1,71 +1,87 @@
 {% extends "base.html" %}
 {% block title %}Search · iOS Headers{% endblock %}
-{% block content %}
-<div class="card">
-  <h1>iOS Headers</h1>
-  <p class="muted">Cross-version search (English only, no JavaScript).</p>
-  {% if show_query_elapsed_ms %}
-  <p class="muted">Query Time: {{ query_elapsed_ms }} ms</p>
-  {% endif %}
-  <form method="get" action="{{ url_for('search_page') }}" class="row">
-    <input class="search-input" type="text" name="q" value="{{ query }}" placeholder="Search directory name prefix or owner substring" required>
-    <button class="btn" type="submit">Search</button>
-  </form>
-</div>
-
-{% if query %}
-<div class="grid" style="grid-template-columns: 1fr 1fr;">
-  <section class="card">
-    <h2>Directory Results</h2>
-    <p class="muted">Directory names are matched by prefix (for example, Nano → NanoTimeKit).</p>
-    {% if directory_hits %}
-    <ul class="list">
-      {% for directory_name, file_count in directory_hits %}
-      <li>
-        <a href="{{ url_for('directory_page', directory_name=directory_name) }}">{{ directory_name }}</a>
-        <span class="chip">{{ file_count }} files</span>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-      <p class="muted">No directory matches.</p>
-    {% endif %}
-  </section>
-
-  <section class="card">
-    <h2>Owner Results</h2>
-    <p class="muted">Click to open the latest available version directly.</p>
-    {% if owner_hits %}
-    <ul class="list">
-      {% for item in owner_hits %}
-      <li>
-        <a href="{{ url_for('view_header', version_id=encode_version_id(item.version_id), absolute_path=item.absolute_path.lstrip('/')) }}">{{ item.absolute_path }}</a>
-        <div class="muted">version: {{ item.version_id }} ({{ item.version_num }})</div>
-      </li>
-      {% endfor %}
-    </ul>
-    {% else %}
-      <p class="muted">No owner matches.</p>
-    {% endif %}
-  </section>
-</div>
+{% block site_header %}
+{% if query or selected_dir_name %}
+{{ super() }}
 {% endif %}
-
-{% if selected_dir_name %}
-<section class="card">
-  <h2>Files in directories named {{ selected_dir_name }}</h2>
-  <p class="muted">Results use latest version number: {{ latest_version_num }}</p>
-  {% if directory_files %}
-  <ul class="list">
-    {% for file in directory_files %}
-    <li>
-      <a href="{{ url_for('view_latest_header', absolute_path=file.absolute_path.lstrip('/')) }}">{{ file.absolute_path }}</a>
-    </li>
-    {% endfor %}
-  </ul>
-  {% else %}
-  <p class="muted">No files found for this directory in the latest version.</p>
-  {% endif %}
+{% endblock %}
+{% block content %}
+{% if not query and not selected_dir_name %}
+{% set search_mode = 'home' %}
+<section class="google-home" aria-label="Homepage search">
+  <div class="google-home-inner">
+    <div class="stack-5">
+      <h1 class="google-wordmark">iOS Headers</h1>
+      <p class="muted google-subtitle">Explore iOS SDK headers across versions in one search</p>
+    </div>
+    {% include "_partials/search_form.html" %}
+    <div class="google-actions" aria-label="Quick links">
+      <a class="chip" href="{{ url_for('directory_page', directory_name='UIKitCore') }}">UIKitCore</a>
+      <a class="chip" href="{{ url_for('directory_page', directory_name='Foundation') }}">Foundation</a>
+      <a class="chip" href="{{ url_for('directory_page', directory_name='SpringBoard') }}">SpringBoard</a>
+    </div>
+  </div>
 </section>
+{% else %}
+{% set search_mode = 'results' %}
+<div class="flow">
+  <section class="panel hero-panel stack-4">
+    <h1 class="sr-only">Search</h1>
+    {% include "_partials/search_form.html" %}
+    <div class="top-actions">
+      <div class="meta-row" aria-label="Search summary">
+        {% if query %}
+        <span class="chip current">Query: {{ query }}</span>
+        {% endif %}
+        {% if selected_dir_name %}
+        <span class="chip">Directory: {{ selected_dir_name }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  {% if query or selected_dir_name %}
+  <section class="panel-subtle metric-strip" aria-label="Overview">
+    <article class="metric">
+      <p class="metric-label">Directory matches</p>
+      <p class="metric-value">{{ directory_hits|length if query else 0 }}</p>
+    </article>
+    <article class="metric">
+      <p class="metric-label">Owner matches</p>
+      <p class="metric-value">{{ owner_hits|length if query else 0 }}</p>
+    </article>
+    <article class="metric">
+      <p class="metric-label">Latest version</p>
+      <p class="metric-value">{{ latest_version_num if latest_version_num is not none else "-" }}</p>
+    </article>
+  </section>
+  {% endif %}
+
+  <section class="results-flow" aria-label="Search results">
+    {% if query %}
+    {% include "_partials/directory_results.html" %}
+    {% include "_partials/owner_results.html" %}
+    {% endif %}
+
+    {% if selected_dir_name %}
+    <section class="panel stack-3">
+      <h2 class="title-lg">Files · {{ selected_dir_name }}</h2>
+      {% if directory_files %}
+      <ul class="list">
+        {% for file in directory_files %}
+        <li>
+          <p class="list-item-title">
+            <a href="{{ url_for('view_latest_header', absolute_path=file.absolute_path.lstrip('/')) }}">{{ file.absolute_path }}</a>
+          </p>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="empty">No files found.</div>
+      {% endif %}
+    </section>
+    {% endif %}
+  </section>
+</div>
 {% endif %}
 {% endblock %}

@@ -1,0 +1,18 @@
+<section class="panel">
+  <h2 class="title-lg">Directory Matches · {{ directory_hits|length }}</h2>
+
+  {% if directory_hits %}
+  <ul class="list">
+    {% for directory_name, file_count in directory_hits %}
+    <li>
+      <p class="list-item-title">
+        <a href="{{ url_for('directory_page', directory_name=directory_name) }}">{{ directory_name }}</a>
+      </p>
+      <p class="list-item-meta">{{ file_count }} files</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">No directory matches.</div>
+  {% endif %}
+</section>

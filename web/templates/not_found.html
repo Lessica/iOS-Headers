@@ -1,9 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Not Found · iOS Headers{% endblock %}
 {% block content %}
-<div class="card">
-  <h1>Not Found</h1>
-  <p class="muted">The requested resource is unavailable.</p>
-  <p><a href="{{ url_for('search_page') }}">Back to search</a></p>
+<div class="flow narrow">
+  <section class="panel hero-panel stack-4">
+    <h1 class="title-xxl">404</h1>
+    <p class="muted">This path is unavailable.</p>
+    <div class="meta-row">
+      <a class="btn" href="{{ url_for('search_page') }}">Back to Home</a>
+    </div>
+  </section>
+
+  <section class="panel-subtle stack-3">
+    {% include "_partials/search_form.html" %}
+  </section>
 </div>
 {% endblock %}

@@ -1,0 +1,18 @@
+<section class="panel">
+  <h2 class="title-lg">Owner Matches · {{ owner_hits|length }}</h2>
+
+  {% if owner_hits %}
+  <ul class="list">
+    {% for item in owner_hits %}
+    <li>
+      <p class="list-item-title">
+        <a href="{{ url_for('view_header', version_id=encode_version_id(item.version_id), absolute_path=item.absolute_path.lstrip('/')) }}">{{ item.absolute_path }}</a>
+      </p>
+      <p class="list-item-meta">Version: {{ item.version_id }} ({{ item.version_num }})</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="empty">No owner matches.</div>
+  {% endif %}
+</section>

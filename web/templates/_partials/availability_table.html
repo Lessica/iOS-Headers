@@ -1,0 +1,34 @@
+{% if availability_rows %}
+<div class="table-wrap" role="region" aria-label="Symbol availability table" tabindex="0">
+  <table>
+    <thead>
+      <tr>
+        <th>Owner</th>
+        <th>Type</th>
+        <th>Symbol</th>
+        {% for version_num, candidate_version_id in versions %}
+        <th>{{ candidate_version_id }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in availability_rows %}
+      <tr>
+        <td>{{ row.owner_name }}</td>
+        <td>{{ row.symbol_type }}</td>
+        <td><code>{{ row.symbol_key }}</code></td>
+        {% for state in row.states %}
+          {% if state.exists %}
+          <td class="state-yes">YES</td>
+          {% else %}
+          <td class="state-no">NO</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">No symbols found.</div>
+{% endif %}
