@@ -456,7 +456,20 @@ def parse_owner_from_interface(line: str) -> tuple[str, str] | None:
     return None
 
 
-def parse_header_symbols(path: Path) -> list[ParsedSymbol] | None:
+def collapse_consecutive_duplicate_lines(raw_bytes: bytes) -> bytes:
+    lines = raw_bytes.splitlines(keepends=True)
+    if not lines:
+        return raw_bytes
+
+    deduped: list[bytes] = [lines[0]]
+    for line in lines[1:]:
+        if line == deduped[-1]:
+            continue
+        deduped.append(line)
+    return b"".join(deduped)
+
+
+def parse_header_symbols(path: Path, lines: list[str]) -> list[ParsedSymbol] | None:
     symbols: list[ParsedSymbol] = []
     owner_kind: str | None = None
     owner_name: str | None = None
@@ -472,33 +485,49 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol] | None:
             return None
         return (owner_kind, owner_name)
 
-    with path.open("r", encoding="utf-8", errors="replace") as file_obj:
-        for index, raw_line in enumerate(file_obj, start=1):
-            line = raw_line.rstrip("\n")
-            stripped = line.strip()
+    for index, line in enumerate(lines, start=1):
+        stripped = line.strip()
 
-            owner_info = parse_owner_from_interface(line)
-            if owner_info is not None:
-                owner_kind, owner_name = owner_info
-                in_ivar_block = "{" in line
-                continue
+        owner_info = parse_owner_from_interface(line)
+        if owner_info is not None:
+            owner_kind, owner_name = owner_info
+            in_ivar_block = "{" in line
+            continue
 
-            if stripped.startswith("@end"):
-                owner_kind = None
-                owner_name = None
-                in_ivar_block = False
-                continue
+        if stripped.startswith("@end"):
+            owner_kind = None
+            owner_name = None
+            in_ivar_block = False
+            continue
 
-            if stripped == "{":
-                in_ivar_block = True
-                continue
-            if stripped == "}":
-                in_ivar_block = False
-                continue
+        if stripped == "{":
+            in_ivar_block = True
+            continue
+        if stripped == "}":
+            in_ivar_block = False
+            continue
 
-            property_name = extract_property_name(line)
-            if property_name:
-                owner = require_owner("property", index)
+        property_name = extract_property_name(line)
+        if property_name:
+            owner = require_owner("property", index)
+            if owner is None:
+                return None
+            resolved_owner_kind, resolved_owner_name = owner
+            symbols.append(
+                ParsedSymbol(
+                    owner_kind=resolved_owner_kind,
+                    owner_name=resolved_owner_name,
+                    symbol_type="property",
+                    symbol_key=property_name,
+                    line_no=index,
+                )
+            )
+            continue
+
+        if in_ivar_block and stripped and not stripped.startswith("/*"):
+            ivar_name = extract_ivar_name(line)
+            if ivar_name:
+                owner = require_owner("ivar", index)
                 if owner is None:
                     return None
                 resolved_owner_kind, resolved_owner_name = owner
@@ -506,48 +535,30 @@ def parse_header_symbols(path: Path) -> list[ParsedSymbol] | None:
                     ParsedSymbol(
                         owner_kind=resolved_owner_kind,
                         owner_name=resolved_owner_name,
-                        symbol_type="property",
-                        symbol_key=property_name,
+                        symbol_type="ivar",
+                        symbol_key=ivar_name,
                         line_no=index,
                     )
                 )
                 continue
 
-            if in_ivar_block and stripped and not stripped.startswith("/*"):
-                ivar_name = extract_ivar_name(line)
-                if ivar_name:
-                    owner = require_owner("ivar", index)
-                    if owner is None:
-                        return None
-                    resolved_owner_kind, resolved_owner_name = owner
-                    symbols.append(
-                        ParsedSymbol(
-                            owner_kind=resolved_owner_kind,
-                            owner_name=resolved_owner_name,
-                            symbol_type="ivar",
-                            symbol_key=ivar_name,
-                            line_no=index,
-                        )
+        if stripped.startswith(("+", "-")) and stripped.endswith(";"):
+            selector = extract_selector(stripped)
+            if selector:
+                symbol_type = "class_method" if stripped.startswith("+") else "instance_method"
+                owner = require_owner(symbol_type, index)
+                if owner is None:
+                    return None
+                resolved_owner_kind, resolved_owner_name = owner
+                symbols.append(
+                    ParsedSymbol(
+                        owner_kind=resolved_owner_kind,
+                        owner_name=resolved_owner_name,
+                        symbol_type=symbol_type,
+                        symbol_key=selector,
+                        line_no=index,
                     )
-                    continue
-
-            if stripped.startswith(("+", "-")) and stripped.endswith(";"):
-                selector = extract_selector(stripped)
-                if selector:
-                    symbol_type = "class_method" if stripped.startswith("+") else "instance_method"
-                    owner = require_owner(symbol_type, index)
-                    if owner is None:
-                        return None
-                    resolved_owner_kind, resolved_owner_name = owner
-                    symbols.append(
-                        ParsedSymbol(
-                            owner_kind=resolved_owner_kind,
-                            owner_name=resolved_owner_name,
-                            symbol_type=symbol_type,
-                            symbol_key=selector,
-                            line_no=index,
-                        )
-                    )
+                )
 
     return symbols
 
@@ -670,11 +681,13 @@ def assign_version_numbers(
 
 def parse_file_task(file_path: Path) -> tuple[str, int, list[ParsedSymbol], bytes] | None:
     raw_bytes = file_path.read_bytes()
-    text_md5 = hashlib.md5(raw_bytes).hexdigest()
-    symbols = parse_header_symbols(file_path)
+    normalized_bytes = collapse_consecutive_duplicate_lines(raw_bytes)
+    text_md5 = hashlib.md5(normalized_bytes).hexdigest()
+    normalized_lines = normalized_bytes.decode("utf-8", errors="replace").splitlines()
+    symbols = parse_header_symbols(file_path, normalized_lines)
     if symbols is None:
         return None
-    return (text_md5, len(raw_bytes), symbols, raw_bytes)
+    return (text_md5, len(normalized_bytes), symbols, normalized_bytes)
 
 
 def import_bundle(
