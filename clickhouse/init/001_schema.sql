@@ -72,3 +72,23 @@ CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
 ENGINE = AggregatingMergeTree()
 ORDER BY (path_id, symbol_type, symbol_key, owner_name)
 SETTINGS index_granularity = 8192;
+
+CREATE VIEW IF NOT EXISTS ios_headers.symbol_presence_readable AS
+SELECT
+    path_id,
+    owner_name,
+    symbol_type,
+    symbol_key,
+    bitmapToArray(groupBitmapMergeState(version_bitmap)) AS version_nums,
+    arrayStringConcat(
+        arrayMap(v -> toString(v), bitmapToArray(groupBitmapMergeState(version_bitmap))),
+        ','
+    ) AS version_nums_csv,
+    groupBitmapMerge(version_bitmap) AS version_count,
+    max(updated_at) AS updated_at
+FROM ios_headers.symbol_presence
+GROUP BY
+    path_id,
+    owner_name,
+    symbol_type,
+    symbol_key;
