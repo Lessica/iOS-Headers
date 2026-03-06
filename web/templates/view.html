@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ absolute_path }} · iOS Headers{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content: space-between;">
+    <h1 style="margin: 0;">{{ absolute_path }}</h1>
+    <a href="{{ url_for('search_page') }}">Back to search</a>
+  </div>
+  <p class="muted">Current version: {{ version_id }}</p>
+</div>
+
+<section class="card">
+  <h2>Version Switch</h2>
+  {% if versions %}
+    <div class="row">
+    {% for version_num, candidate_version_id in versions %}
+      {% if candidate_version_id == version_id %}
+        <span class="chip">{{ candidate_version_id }} (current)</span>
+      {% else %}
+        <a class="chip" href="{{ url_for('view_header', version_id=candidate_version_id, absolute_path=absolute_path.lstrip('/')) }}">{{ candidate_version_id }}</a>
+      {% endif %}
+    {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">No other versions available.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Source Header</h2>
+  <div class="muted">Lines: {{ line_count }}</div>
+  <div class="code-block"><code>{{ rendered_source_html|safe }}</code></div>
+</section>
+
+<section class="card">
+  <h2>Symbol Availability</h2>
+  {% if availability_rows %}
+  <table>
+    <thead>
+      <tr>
+        <th>Owner</th>
+        <th>Type</th>
+        <th>Symbol</th>
+        {% for version_num, candidate_version_id in versions %}
+        <th>{{ candidate_version_id }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in availability_rows %}
+      <tr>
+        <td>{{ row.owner_name }}</td>
+        <td>{{ row.symbol_type }}</td>
+        <td><code>{{ row.symbol_key }}</code></td>
+        {% for state in row.states %}
+          {% if state.exists %}
+          <td class="ok">YES</td>
+          {% else %}
+          <td class="no">NO</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="muted">No symbols found in this header.</p>
+  {% endif %}
+</section>
+{% endblock %}

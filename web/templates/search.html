@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Search · iOS Headers{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>iOS Headers</h1>
+  <p class="muted">Cross-version search (English only, no JavaScript).</p>
+  <form method="get" action="{{ url_for('search_page') }}" class="row">
+    <input class="search-input" type="text" name="q" value="{{ query }}" placeholder="Search directory prefix or owner substring" required>
+    <button class="btn" type="submit">Search</button>
+  </form>
+</div>
+
+{% if query %}
+<div class="grid" style="grid-template-columns: 1fr 1fr;">
+  <section class="card">
+    <h2>Directory Results</h2>
+    <p class="muted">Click to list all files in this directory on this page.</p>
+    {% if directory_hits %}
+    <ul class="list">
+      {% for directory, file_count in directory_hits %}
+      <li>
+        <a href="{{ url_for('search_page', q=query, dir=directory) }}">{{ directory }}</a>
+        <span class="chip">{{ file_count }} files</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+      <p class="muted">No directory matches.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Owner Results</h2>
+    <p class="muted">Click to open the latest available version directly.</p>
+    {% if owner_hits %}
+    <ul class="list">
+      {% for item in owner_hits %}
+      <li>
+        <a href="{{ url_for('view_header', version_id=item.version_id, absolute_path=item.absolute_path.lstrip('/')) }}">{{ item.absolute_path }}</a>
+        <div class="muted">version: {{ item.version_id }} ({{ item.version_num }})</div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+      <p class="muted">No owner matches.</p>
+    {% endif %}
+  </section>
+</div>
+{% endif %}
+
+{% if selected_dir %}
+<section class="card">
+  <h2>Files in {{ selected_dir }}</h2>
+  <p class="muted">Results use latest version number: {{ latest_version_num }}</p>
+  {% if directory_files %}
+  <ul class="list">
+    {% for file in directory_files %}
+    <li>
+      <a href="{{ url_for('open_latest', path=file.absolute_path) }}">{{ file.absolute_path }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No files found for this directory in the latest version.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

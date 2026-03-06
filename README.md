@@ -1,12 +1,14 @@
 # iOS-Headers 本地构建与数据流程
 
-本项目当前使用 **v2 构建流程**（ClickHouse + Redis + MinIO）。
+本项目当前使用 **v2 构建流程**（ClickHouse + Redis + MinIO），并提供首期站点（Flask + Jinja2 + Nginx）。
 
 ## 服务栈（OrbStack / Docker Compose）
 
 - ClickHouse：元数据与符号索引
 - MinIO：头文件正文对象存储
 - Redis：热点缓存
+- Web（Flask + Jinja2）：SSR 页面渲染（禁用前端 JavaScript）
+- Nginx：站点入口与反向代理（仅 Nginx 对宿主机暴露端口）
 
 ### 快速启动
 
@@ -16,6 +18,8 @@
    - `scripts/deploy_local_stack.zsh up`
 3. 健康检查：
    - `scripts/deploy_local_stack.zsh check`
+4. 打开站点：
+  - `http://127.0.0.1:18080`（可通过 `.env` 的 `WEB_PORT` 调整）
 
 ### 常用命令
 
@@ -95,6 +99,31 @@
 - ClickHouse Native：`127.0.0.1:19000`
 - MinIO API：`127.0.0.1:19001`
 - Redis：`127.0.0.1:16379`
+- Web（Nginx）：`127.0.0.1:18080`
+
+## 首期站点功能（English UI, No JavaScript）
+
+### 搜索页（`/`）
+
+- 支持跨版本综合搜索：
+  - `Directory`：目录名前缀匹配（如 `Back` → `BackBoardServices`）
+  - `Owner`：`filename/interface/protocol/category(host class)` 子串匹配
+- 结果交互：
+  - 选择 `Directory` 结果：停留在搜索页并展示该目录下所有文件（基于最新版本号）
+  - 选择 `Owner` 结果：直接跳转到查看页（默认打开该结果存在的最新版本）
+
+### 查看页（`/v/{version_id}/{absolute_path}`）
+
+- 展示指定版本与路径的头文件正文
+- 支持同一路径的跨版本切换
+- 显示符号在各版本上的可用性（YES/NO）
+- `#import/#include` 仅按同目录文件生成内部超链接
+
+### 缓存与伪静态
+
+- 查看页按需渲染并将最终 HTML 写入 Redis 缓存
+- 搜索页按查询参数缓存 SSR HTML
+- 全站为纯 SSR，不依赖任何前端 JavaScript
 
 ## 关键文件
 
