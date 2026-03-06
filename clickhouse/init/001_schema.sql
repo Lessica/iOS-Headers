@@ -86,20 +86,24 @@ GRANULARITY 64;
 
 CREATE TABLE IF NOT EXISTS ios_headers.symbol_presence (
     path_id UInt64,
+    owner_kind LowCardinality(String),
     owner_name String,
+    owner_name_lc String,
     symbol_type LowCardinality(String),
     symbol_key String,
     version_bitmap AggregateFunction(groupBitmapState, UInt64),
     updated_at SimpleAggregateFunction(max, DateTime) DEFAULT now()
 )
 ENGINE = AggregatingMergeTree()
-ORDER BY (path_id, symbol_type, symbol_key, owner_name)
+ORDER BY (path_id, owner_kind, symbol_type, symbol_key, owner_name)
 SETTINGS index_granularity = 8192;
 
 CREATE VIEW IF NOT EXISTS ios_headers.symbol_presence_readable AS
 SELECT
     path_id,
+    owner_kind,
     owner_name,
+    owner_name_lc,
     symbol_type,
     symbol_key,
     bitmapToArray(groupBitmapMergeState(version_bitmap)) AS version_nums,
@@ -112,6 +116,8 @@ SELECT
 FROM ios_headers.symbol_presence
 GROUP BY
     path_id,
+    owner_kind,
     owner_name,
+    owner_name_lc,
     symbol_type,
     symbol_key;

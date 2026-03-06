@@ -105,10 +105,12 @@ def _version_insert_sql(version_num: int) -> str:
     # upper bound on version_num beyond the UInt64 maximum.
     return f"""
     INSERT INTO symbol_presence
-    (path_id, owner_name, symbol_type, symbol_key, version_bitmap, updated_at)
+    (path_id, owner_kind, owner_name, owner_name_lc, symbol_type, symbol_key, version_bitmap, updated_at)
     SELECT
         fi.path_id,
+        s.owner_kind,
         s.owner_name,
+        lowerUTF8(s.owner_name),
         s.symbol_type,
         s.symbol_key,
         groupBitmapState(toUInt64(fi.version_num)),
@@ -116,7 +118,7 @@ def _version_insert_sql(version_num: int) -> str:
     FROM symbols AS s
     INNER JOIN file_instances AS fi ON fi.content_id = s.content_id
     WHERE fi.version_num = {version_num}
-    GROUP BY fi.path_id, s.owner_name, s.symbol_type, s.symbol_key
+    GROUP BY fi.path_id, s.owner_kind, s.owner_name, s.symbol_type, s.symbol_key
     """
 
 

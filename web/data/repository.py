@@ -153,7 +153,53 @@ class Repository:
     def search_owner_candidates(self, keyword: str, limit: int = 50) -> list[FileRef]:
         rows = self._ch.query(
             """
-            WITH lowerUTF8(%(keyword)s) AS keyword_lc
+            WITH lowerUTF8(%(keyword)s) AS keyword_lc,
+            latest_file_version_by_path AS (
+                SELECT
+                    path_id,
+                    max(version_num) AS latest_version_num
+                FROM file_instances
+                GROUP BY path_id
+            ),
+            filename_candidates AS (
+                SELECT
+                    if(p.file_name_lc = keyword_lc, 0, 10) AS priority_rank,
+                    lv.latest_version_num AS matched_version_num,
+                    p.path_id AS path_id,
+                    p.absolute_path AS absolute_path
+                FROM paths p
+                INNER JOIN latest_file_version_by_path lv ON lv.path_id = p.path_id
+                WHERE p.file_name_lc = keyword_lc
+                   OR positionUTF8(p.file_name_lc, keyword_lc) > 0
+            ),
+            owner_candidates AS (
+                SELECT
+                    min(
+                        multiIf(
+                            sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'interface', 1,
+                            sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'protocol', 2,
+                            sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'category', 3,
+                            sp.owner_name_lc = keyword_lc, 4,
+                            positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'interface', 11,
+                            positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'protocol', 12,
+                            positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'category', 13,
+                            14
+                        )
+                    ) AS priority_rank,
+                    max(arrayMax(bitmapToArray(groupBitmapMergeState(sp.version_bitmap)))) AS matched_version_num,
+                    p.path_id AS path_id,
+                    p.absolute_path AS absolute_path
+                FROM symbol_presence sp
+                INNER JOIN paths p ON p.path_id = sp.path_id
+                WHERE sp.owner_name_lc = keyword_lc
+                   OR positionUTF8(sp.owner_name_lc, keyword_lc) > 0
+                GROUP BY p.path_id, p.absolute_path
+            ),
+            candidates AS (
+                SELECT * FROM filename_candidates
+                UNION ALL
+                SELECT * FROM owner_candidates
+            )
             SELECT
                 best_priority_rank,
                 max_version_num,
@@ -163,64 +209,21 @@ class Repository:
             FROM
             (
                 SELECT
-                    min(priority_rank) AS best_priority_rank,
-                    max(version_num) AS max_version_num,
-                    argMax(version_id, version_num) AS max_version_id,
-                    path_id,
-                    argMax(absolute_path, version_num) AS absolute_path
+                    c.priority_rank AS best_priority_rank,
+                    c.matched_version_num AS max_version_num,
+                    v.version_id AS max_version_id,
+                    c.path_id AS path_id,
+                    c.absolute_path AS absolute_path,
+                    row_number() OVER (
+                        PARTITION BY c.path_id
+                        ORDER BY c.priority_rank ASC, c.matched_version_num DESC, c.absolute_path ASC
+                    ) AS rn
                 FROM
-                (
-                    SELECT
-                        fi.version_num AS version_num,
-                        v.version_id AS version_id,
-                        p.path_id AS path_id,
-                        p.absolute_path AS absolute_path,
-                        if(
-                            p.file_name_lc = keyword_lc,
-                            0,
-                            10
-                        ) AS priority_rank
-                    FROM file_instances fi
-                    INNER JOIN paths p ON p.path_id = fi.path_id
-                    INNER JOIN versions v ON v.version_num = fi.version_num
-                    WHERE p.file_name_lc = keyword_lc
-                              OR positionUTF8(p.file_name_lc, keyword_lc) > 0
-
-                    UNION ALL
-
-                    SELECT
-                        fi.version_num AS version_num,
-                        v.version_id AS version_id,
-                        p.path_id AS path_id,
-                        p.absolute_path AS absolute_path,
-                        min(
-                            multiIf(
-                                s.owner_name_lc = keyword_lc AND (
-                                    s.owner_kind = 'category'
-                                    OR p.is_category_file = 1
-                                ), 3,
-                                s.owner_name_lc = keyword_lc AND s.owner_kind = 'interface', 1,
-                                s.owner_name_lc = keyword_lc AND s.owner_kind = 'protocol', 2,
-                                s.owner_name_lc = keyword_lc, 4,
-                                positionUTF8(s.owner_name_lc, keyword_lc) > 0 AND (
-                                    s.owner_kind = 'category'
-                                    OR p.is_category_file = 1
-                                ), 13,
-                                positionUTF8(s.owner_name_lc, keyword_lc) > 0 AND s.owner_kind = 'interface', 11,
-                                positionUTF8(s.owner_name_lc, keyword_lc) > 0 AND s.owner_kind = 'protocol', 12,
-                                14
-                            )
-                        ) AS priority_rank
-                    FROM symbols s
-                    INNER JOIN file_instances fi ON fi.content_id = s.content_id
-                    INNER JOIN paths p ON p.path_id = fi.path_id
-                    INNER JOIN versions v ON v.version_num = fi.version_num
-                          WHERE s.owner_name_lc = keyword_lc
-                              OR positionUTF8(s.owner_name_lc, keyword_lc) > 0
-                    GROUP BY fi.version_num, v.version_id, p.path_id, p.absolute_path
-                ) AS owner_matches
-                GROUP BY path_id
+                    candidates c
+                INNER JOIN versions v ON v.version_num = c.matched_version_num
+                WHERE c.matched_version_num > 0
             )
+            WHERE rn = 1
             ORDER BY best_priority_rank ASC, max_version_num DESC, absolute_path ASC
             LIMIT %(limit)s
             """,
@@ -293,9 +296,14 @@ class Repository:
     def get_symbol_presence_map(self, path_id: int) -> dict[tuple[str, str, str], set[int]]:
         rows = self._ch.query(
             """
-            SELECT owner_name, symbol_type, symbol_key, version_nums
-            FROM symbol_presence_readable
+            SELECT
+                owner_name,
+                symbol_type,
+                symbol_key,
+                bitmapToArray(groupBitmapMergeState(version_bitmap)) AS version_nums
+            FROM symbol_presence
             WHERE path_id = %(path_id)s
+            GROUP BY owner_name, symbol_type, symbol_key
             """,
             {"path_id": path_id},
         )
