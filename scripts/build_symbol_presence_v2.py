@@ -48,12 +48,21 @@ class ClickHouseClient:
         last_exc: Exception | None = None
         for attempt in range(1, retries + 1):
             try:
-                rows = self.client.execute(sql)
-                if not rows:
+                result = self.client.execute(sql)
+                if isinstance(result, list):
+                    if not result:
+                        return ""
+                    first = result[0]
+                    if isinstance(first, (tuple, list)):
+                        return "\n".join(
+                            "\t".join(str(value) for value in row)
+                            for row in result
+                            if isinstance(row, (tuple, list))
+                        )
+                    return "\n".join(str(item) for item in result)
+                if result is None:
                     return ""
-                if isinstance(rows[0], (tuple, list)):
-                    return "\n".join("\t".join(str(value) for value in row) for row in rows)
-                return "\n".join(str(row) for row in rows)
+                return str(result)
             except Exception as exc:
                 last_exc = exc
             if attempt == retries:
