@@ -199,13 +199,19 @@ class Repository:
                         p.absolute_path AS absolute_path,
                         min(
                             multiIf(
+                                lowerUTF8(s.owner_name) = keyword_lc AND (
+                                    lowerUTF8(s.owner_kind) = 'category'
+                                    OR positionUTF8(extract(p.absolute_path, '[^/]+$'), '+') > 0
+                                ), 3,
                                 lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'interface', 1,
                                 lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'protocol', 2,
-                                lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'category', 3,
                                 lowerUTF8(s.owner_name) = keyword_lc, 4,
+                                positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND (
+                                    lowerUTF8(s.owner_kind) = 'category'
+                                    OR positionUTF8(extract(p.absolute_path, '[^/]+$'), '+') > 0
+                                ), 13,
                                 positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'interface', 11,
                                 positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'protocol', 12,
-                                positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'category', 13,
                                 14
                             )
                         ) AS priority_rank
