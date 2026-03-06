@@ -112,27 +112,3 @@ SETTINGS index_granularity = 8192;
 CREATE INDEX IF NOT EXISTS idx_symbol_presence_owner_name_ngram ON ios_headers.symbol_presence (owner_name_lc)
 TYPE ngrambf_v1(3, 32768, 3, 0)
 GRANULARITY 64;
-
-CREATE VIEW IF NOT EXISTS ios_headers.symbol_presence_readable AS
-SELECT
-    path_id,
-    owner_kind,
-    owner_name,
-    owner_name_lc,
-    symbol_type,
-    symbol_key,
-    bitmapToArray(groupBitmapMergeState(version_bitmap)) AS version_nums,
-    arrayStringConcat(
-        arrayMap(v -> toString(v), bitmapToArray(groupBitmapMergeState(version_bitmap))),
-        ','
-    ) AS version_nums_csv,
-    groupBitmapMerge(version_bitmap) AS version_count,
-    max(updated_at) AS updated_at
-FROM ios_headers.symbol_presence
-GROUP BY
-    path_id,
-    owner_kind,
-    owner_name,
-    owner_name_lc,
-    symbol_type,
-    symbol_key;
