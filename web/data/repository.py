@@ -186,7 +186,7 @@ class Repository:
                             14
                         )
                     ) AS priority_rank,
-                    max(arrayMax(bitmapToArray(groupBitmapMergeState(sp.version_bitmap)))) AS matched_version_num,
+                    arrayMax(bitmapToArray(groupBitmapMergeState(sp.version_bitmap))) AS matched_version_num,
                     p.path_id AS path_id,
                     p.absolute_path AS absolute_path
                 FROM symbol_presence sp
