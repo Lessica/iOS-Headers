@@ -433,6 +433,13 @@ def extract_ivar_name(line: str) -> str | None:
 
 
 def parse_owner_from_interface(line: str) -> tuple[str, str] | None:
+    category_match = re.match(
+        r"^\s*@interface\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*[^)]*\s*\)",
+        line,
+    )
+    if category_match:
+        return ("category", category_match.group(1))
+
     interface_match = re.match(r"^\s*@interface\s+([A-Za-z_][A-Za-z0-9_]*)", line)
     if interface_match:
         return ("interface", interface_match.group(1))
