@@ -159,7 +159,7 @@ class Repository:
             """
             WITH lowerUTF8(%(keyword)s) AS keyword_lc
             SELECT
-                best_match_rank,
+                best_priority_rank,
                 max_version_num,
                 max_version_id,
                 path_id,
@@ -167,7 +167,7 @@ class Repository:
             FROM
             (
                 SELECT
-                    min(match_rank) AS best_match_rank,
+                    min(priority_rank) AS best_priority_rank,
                     max(version_num) AS max_version_num,
                     argMax(version_id, version_num) AS max_version_id,
                     path_id,
@@ -179,7 +179,11 @@ class Repository:
                         v.version_id AS version_id,
                         p.path_id AS path_id,
                         p.absolute_path AS absolute_path,
-                        if(lowerUTF8(extract(p.absolute_path, '[^/]+$')) = keyword_lc, 0, 1) AS match_rank
+                        if(
+                            lowerUTF8(extract(p.absolute_path, '[^/]+$')) = keyword_lc,
+                            0,
+                            10
+                        ) AS priority_rank
                     FROM file_instances fi
                     INNER JOIN paths p ON p.path_id = fi.path_id
                     INNER JOIN versions v ON v.version_num = fi.version_num
@@ -193,7 +197,18 @@ class Repository:
                         v.version_id AS version_id,
                         p.path_id AS path_id,
                         p.absolute_path AS absolute_path,
-                        min(if(lowerUTF8(s.owner_name) = keyword_lc, 0, 1)) AS match_rank
+                        min(
+                            multiIf(
+                                lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'interface', 1,
+                                lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'protocol', 2,
+                                lowerUTF8(s.owner_name) = keyword_lc AND lowerUTF8(s.owner_kind) = 'category', 3,
+                                lowerUTF8(s.owner_name) = keyword_lc, 4,
+                                positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'interface', 11,
+                                positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'protocol', 12,
+                                positionCaseInsensitiveUTF8(s.owner_name, %(keyword)s) > 0 AND lowerUTF8(s.owner_kind) = 'category', 13,
+                                14
+                            )
+                        ) AS priority_rank
                     FROM symbols s
                     INNER JOIN file_instances fi ON fi.content_id = s.content_id
                     INNER JOIN paths p ON p.path_id = fi.path_id
@@ -204,7 +219,7 @@ class Repository:
                 ) AS owner_matches
                 GROUP BY path_id
             )
-            ORDER BY best_match_rank ASC, max_version_num DESC, absolute_path ASC
+            ORDER BY best_priority_rank ASC, max_version_num DESC, absolute_path ASC
             LIMIT %(limit)s
             """,
             {"keyword": keyword, "limit": limit},
