@@ -153,8 +153,21 @@ init_minio() {
   ensure_minio_bucket
 }
 
+rebuild_web() {
+  require_tools
+  compose up -d --build web nginx
+  echo "web stack rebuilt"
+  compose ps web nginx
+}
+
+clear_cache() {
+  require_tools
+  compose exec -T redis redis-cli FLUSHDB >/dev/null
+  echo "redis cache cleared"
+}
+
 usage() {
-  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|init-minio}"
+  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|init-minio|rebuild-web|clear-cache}"
 }
 
 case "${1:-}" in
@@ -166,5 +179,7 @@ case "${1:-}" in
   check) check ;;
   init-db) init_db ;;
   init-minio) init_minio ;;
+  rebuild-web) rebuild_web ;;
+  clear-cache) clear_cache ;;
   *) usage; exit 1 ;;
 esac
