@@ -45,6 +45,7 @@
 
   {% if has_changes %}
   <div class="code-area">
+    <button class="btn btn-code-copy" id="copy-diff-btn" type="button">Copy Patch</button>
     <div class="code-block"><code class="language-diff">{{ diff_text }}</code></div>
   </div>
   {% else %}
@@ -56,6 +57,67 @@
     const diffCode = document.querySelector('code.language-diff');
     if (!diffCode) {
       return;
+    }
+    const copyDiffButton = document.getElementById('copy-diff-btn');
+    const codeArea = diffCode.closest('.code-area');
+
+    const setButtonLabelTemporarily = (button, successLabel, defaultLabel) => {
+      if (!button) {
+        return;
+      }
+      button.textContent = successLabel;
+      window.setTimeout(() => {
+        button.textContent = defaultLabel;
+      }, 1200);
+    };
+
+    if (copyDiffButton) {
+      copyDiffButton.addEventListener('click', async () => {
+        const text = diffCode.textContent || '';
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const fallback = document.createElement('textarea');
+            fallback.value = text;
+            fallback.setAttribute('readonly', '');
+            fallback.style.position = 'absolute';
+            fallback.style.left = '-9999px';
+            document.body.appendChild(fallback);
+            fallback.select();
+            document.execCommand('copy');
+            document.body.removeChild(fallback);
+          }
+          setButtonLabelTemporarily(copyDiffButton, 'Copied', 'Copy Patch');
+        } catch (_error) {
+          setButtonLabelTemporarily(copyDiffButton, 'Copy Failed', 'Copy Patch');
+        }
+      });
+
+      const updateCopyButtonPlacement = () => {
+        if (!codeArea) {
+          return;
+        }
+
+        const areaRect = codeArea.getBoundingClientRect();
+        const shouldFix = areaRect.top < 0 && areaRect.bottom > 0;
+        copyDiffButton.classList.toggle('is-fixed', shouldFix);
+
+        if (shouldFix) {
+          const rootStyles = window.getComputedStyle(document.documentElement);
+          const spacing = Number.parseFloat(rootStyles.getPropertyValue('--space-4')) || 16;
+          const fixedLeft = Math.max(10, areaRect.right - copyDiffButton.offsetWidth - spacing);
+          copyDiffButton.style.left = `${fixedLeft}px`;
+          copyDiffButton.style.right = 'auto';
+        } else {
+          copyDiffButton.style.left = '';
+          copyDiffButton.style.right = '';
+        }
+      };
+
+      updateCopyButtonPlacement();
+      window.addEventListener('scroll', updateCopyButtonPlacement, { passive: true });
+      window.addEventListener('resize', updateCopyButtonPlacement);
     }
 
     const classifyLine = (line) => {
