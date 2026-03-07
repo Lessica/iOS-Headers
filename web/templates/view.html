@@ -294,18 +294,30 @@
 
     const positionTooltip = (x, y) => {
       const offset = 14;
+      const sidePadding = 10;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const maxWidth = Math.max(280, Math.min(720, viewportWidth - sidePadding * 2));
+      tooltip.style.maxWidth = `${maxWidth}px`;
+
       tooltip.style.left = `${x + offset}px`;
       tooltip.style.top = `${y + offset}px`;
 
       const rect = tooltip.getBoundingClientRect();
-      const maxLeft = window.innerWidth - rect.width - 10;
-      const maxTop = window.innerHeight - rect.height - 10;
+      const maxLeft = viewportWidth - rect.width - sidePadding;
+      const maxTop = viewportHeight - rect.height - sidePadding;
 
-      if (rect.left > maxLeft) {
-        tooltip.style.left = `${Math.max(10, maxLeft)}px`;
+      if (rect.right > viewportWidth - sidePadding) {
+        const leftPreferred = x - rect.width - offset;
+        tooltip.style.left = `${Math.max(sidePadding, leftPreferred)}px`;
       }
-      if (rect.top > maxTop) {
-        tooltip.style.top = `${Math.max(10, y - rect.height - offset)}px`;
+
+      const adjustedRect = tooltip.getBoundingClientRect();
+      if (adjustedRect.left > maxLeft) {
+        tooltip.style.left = `${Math.max(sidePadding, maxLeft)}px`;
+      }
+      if (adjustedRect.top > maxTop) {
+        tooltip.style.top = `${Math.max(sidePadding, y - adjustedRect.height - offset)}px`;
       }
     };
 

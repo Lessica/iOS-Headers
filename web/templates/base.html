@@ -853,7 +853,8 @@
     .source-hover-tip {
       position: fixed;
       z-index: 40;
-      max-width: min(52vw, 560px);
+      min-width: min(280px, calc(100vw - 20px));
+      max-width: min(72vw, 720px);
       padding: 6px 10px;
       border: 1px solid var(--line-strong);
       border-radius: var(--radius-sm);
@@ -1011,6 +1012,11 @@
 
       .result-actions .btn {
         width: 100%;
+      }
+
+      .top-actions .search-form {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
       }
     }
   </style>
