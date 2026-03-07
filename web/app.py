@@ -295,6 +295,7 @@ def view_header_diff(from_version_id: str, to_version_id: str, absolute_path: st
 
     from_source_text = from_source_bytes.decode("utf-8", errors="replace")
     to_source_text = to_source_bytes.decode("utf-8", errors="replace")
+    versions = repo.list_versions_for_path(to_content_ref.path_id)
     diff_text = _build_unified_diff_text(
         absolute_path=normalized_path,
         from_version_id=from_content_ref.version_id,
@@ -311,6 +312,7 @@ def view_header_diff(from_version_id: str, to_version_id: str, absolute_path: st
         view_directory_name=_extract_directory_name(normalized_path),
         from_version_id=from_content_ref.version_id,
         to_version_id=to_content_ref.version_id,
+        versions=versions,
         from_line_count=len(from_source_text.splitlines()),
         to_line_count=len(to_source_text.splitlines()),
         has_changes=bool(diff_text),
@@ -401,6 +403,11 @@ def view_header(version_id: str, absolute_path: str) -> str:
     )
     timings_ms["build_view_model"] = int((time.perf_counter() - segment_started_at) * 1000)
 
+    compare_to_version_id = _pick_compare_target_version_id(
+        versions=model.versions,
+        current_version_id=model.ref.version_id,
+    )
+
     query_elapsed_ms = int((time.perf_counter() - query_started_at) * 1000)
 
     segment_started_at = time.perf_counter()
@@ -414,6 +421,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
         rendered_source_html=model.rendered_source_html,
         line_count=len(model.source_text.splitlines()),
         file_size_text=_format_bytes_for_display(model.ref.pack_length),
+        compare_to_version_id=compare_to_version_id,
         enable_symbol_matrix=settings.enable_symbol_matrix,
         availability_rows=model.availability_rows,
         source_line_availability=model.source_line_availability,
@@ -536,6 +544,32 @@ def _extract_directory_name(absolute_path: str) -> str | None:
 
     directory_name = os.path.basename(parent_path.rstrip("/"))
     return directory_name or None
+
+
+def _pick_compare_target_version_id(
+    versions: list[tuple[int, str]],
+    current_version_id: str,
+) -> str | None:
+    if not versions:
+        return None
+
+    current_index: int | None = None
+    for index, (_version_num, version_id) in enumerate(versions):
+        if version_id == current_version_id:
+            current_index = index
+            break
+
+    if current_index is None:
+        for _version_num, version_id in versions:
+            if version_id != current_version_id:
+                return version_id
+        return None
+
+    if current_index + 1 < len(versions):
+        return versions[current_index + 1][1]
+    if current_index - 1 >= 0:
+        return versions[current_index - 1][1]
+    return None
 
 
 def _build_search_file_entry(file_ref: FileRef, version_ids: list[str] | None = None) -> dict[str, Any]:

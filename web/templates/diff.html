@@ -8,17 +8,6 @@
 {% endblock %}
 {% block content %}
 <div class="flow">
-  <section class="panel stack-4">
-    <h1 class="title-xl text-break">{{ file_name }}</h1>
-    <p class="path path-view">{{ absolute_path }}</p>
-    <div class="meta-row">
-      <a class="chip current" href="{{ url_for('view_header', version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(from_version_id) }}</a>
-      <span class="chip">→</span>
-      <a class="chip" href="{{ url_for('view_header', version_id=encode_version_id(to_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(to_version_id) }}</a>
-      <span class="chip">{{ from_line_count }} → {{ to_line_count }} lines</span>
-    </div>
-  </section>
-
   <section class="panel-subtle stack-3">
     <div class="top-actions view-top-actions">
       <form class="search-form" id="diff-search-form" method="get" action="{{ url_for('search_page') }}">
@@ -41,6 +30,46 @@
         {% endif %}
       </div>
     </div>
+  </section>
+
+  <section class="panel stack-4">
+    <h1 class="title-xl text-break">{{ file_name }}</h1>
+    <p class="path path-view">{{ absolute_path }}</p>
+    <div class="meta-row">
+      <a class="chip current" href="{{ url_for('view_header', version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(from_version_id) }}</a>
+      {% if from_version_id != to_version_id %}
+      <a class="chip chip-action" href="{{ url_for('view_header_diff', from_version_id=encode_version_id(to_version_id), to_version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) }}">⇆</a>
+      {% else %}
+      <span class="chip" aria-disabled="true">⇆</span>
+      {% endif %}
+      <a class="chip" href="{{ url_for('view_header', version_id=encode_version_id(to_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(to_version_id) }}</a>
+      <span class="chip">{{ from_line_count }} → {{ to_line_count }} lines</span>
+    </div>
+  </section>
+
+  <section class="panel stack-3">
+    <h2 class="title-lg">Compare to…</h2>
+    {% if versions %}
+    <div class="meta-row version-switch-row" aria-label="Available versions">
+      {% for version_num, candidate_version_id in versions %}
+        {% set version_parts = candidate_version_id.split('|', 1) %}
+        {% set version_text = version_parts[0].strip() %}
+        {% set build_text = version_parts[1].strip() if version_parts|length > 1 else '' %}
+        {% set version_aria_label = 'Version ' ~ version_text ~ (', build ' ~ build_text if build_text else '') %}
+        {% if candidate_version_id == to_version_id %}
+          <span class="version-pill tone-{{ loop.index0 % 12 }}" aria-label="{{ version_aria_label }}">{{ version_text }}</span>
+        {% else %}
+          <a
+            class="version-pill tone-{{ loop.index0 % 12 }}"
+            href="{{ url_for('view_header_diff', from_version_id=encode_version_id(from_version_id), to_version_id=encode_version_id(candidate_version_id), absolute_path=absolute_path.lstrip('/')) }}"
+            aria-label="{{ version_aria_label }}"
+          >{{ version_text }}</a>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">No additional versions.</div>
+    {% endif %}
   </section>
 
   {% if has_changes %}
