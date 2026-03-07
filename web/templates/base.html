@@ -697,8 +697,40 @@
       display: flex;
       flex-wrap: wrap;
       gap: var(--space-2);
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
+    }
+
+    .top-actions .search-form {
+      flex: 1 1 min(100%, 420px);
+      min-width: min(100%, 420px);
+    }
+
+    .top-actions > .btn,
+    .top-actions > a.btn {
+      flex: 0 0 auto;
+    }
+
+    .view-top-actions .search-form {
+      flex: 1 1 min(100%, 420px);
+      min-width: min(100%, 420px);
+    }
+
+    .view-top-actions .view-action-row {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      flex: 0 0 auto;
+    }
+
+    .top-actions .search-form-row {
+      flex-wrap: nowrap;
+      align-items: center;
+    }
+
+    .top-actions .search-input {
+      min-width: 0;
+      width: 100%;
     }
 
     .matrix-collapsible > summary {
@@ -1005,10 +1037,6 @@
         row-gap: var(--space-3);
       }
 
-      .top-actions .search-form-row {
-        row-gap: var(--space-3);
-      }
-
       .search-form-google .btn {
         position: static;
         width: 100%;
@@ -1027,8 +1055,29 @@
       }
 
       .top-actions .search-form {
-        flex: 1 1 auto !important;
+        flex: 1 1 0 !important;
         min-width: 0 !important;
+      }
+
+      .top-actions {
+        justify-content: flex-start;
+      }
+
+      .view-top-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+      }
+
+      .view-top-actions .search-form {
+        grid-column: 1 / -1;
+      }
+
+      .view-top-actions .view-action-row {
+        grid-column: 1 / -1;
+        display: inline-flex;
+        width: auto;
+        justify-self: start;
       }
     }
   </style>

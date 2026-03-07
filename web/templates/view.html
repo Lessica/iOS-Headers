@@ -25,8 +25,8 @@
   </section>
 
   <section class="panel-subtle stack-3">
-    <div class="top-actions">
-      <form class="search-form" method="get" action="{{ url_for('search_page') }}" style="flex:1;min-width:min(100%,420px);">
+    <div class="top-actions view-top-actions">
+      <form class="search-form" id="view-search-form" method="get" action="{{ url_for('search_page') }}">
         <label class="sr-only" for="view-search-q">Search query</label>
         <div class="search-form-row">
           <input
@@ -37,12 +37,14 @@
             placeholder="Search headers, owners, or directories"
             autocomplete="off"
           >
-          <button class="btn btn-search" type="submit">Search</button>
         </div>
       </form>
-      {% if view_directory_name %}
-      <a class="btn" href="{{ url_for('directory_page', directory_name=view_directory_name) }}">View Directory</a>
-      {% endif %}
+      <div class="view-action-row">
+        <button class="btn btn-search" type="submit" form="view-search-form">Search</button>
+        {% if view_directory_name %}
+        <a class="btn" href="{{ url_for('directory_page', directory_name=view_directory_name) }}">View Directory</a>
+        {% endif %}
+      </div>
     </div>
   </section>
 
