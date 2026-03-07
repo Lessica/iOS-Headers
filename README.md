@@ -29,6 +29,11 @@
 - 状态：`scripts/deploy_local_stack.zsh status`
 - 日志：`scripts/deploy_local_stack.zsh logs`
   - 单服务：`scripts/deploy_local_stack.zsh logs clickhouse`
+- 启动内网穿透客户端：`scripts/deploy_local_stack.zsh tunnel-up`
+- 停止内网穿透客户端：`scripts/deploy_local_stack.zsh tunnel-down`
+- 重启内网穿透客户端：`scripts/deploy_local_stack.zsh tunnel-restart`
+- 查看内网穿透状态：`scripts/deploy_local_stack.zsh tunnel-status`
+- 查看内网穿透日志：`scripts/deploy_local_stack.zsh tunnel-logs`
 - 重建表结构：`scripts/deploy_local_stack.zsh init-db`
 - 应用增量迁移：`scripts/deploy_local_stack.zsh migrate-db`
 - 初始化 MinIO bucket：`scripts/deploy_local_stack.zsh init-minio`
@@ -108,6 +113,67 @@
 - MinIO API：`127.0.0.1:19001`
 - Redis：`127.0.0.1:16379`
 - Web（Nginx）：`127.0.0.1:18080`
+
+## 内网穿透（FRP）
+
+本项目已在 Compose 中提供可选 `frpc` 容器（profile: `tunnel`），用于把本机 `nginx:80` 通过公网服务器暴露出去。
+
+### 1) 在 Ubuntu 公网服务器部署 `frps`
+
+以下示例使用 Docker 方式部署（推荐）：
+
+1. 创建目录并进入：
+  - `mkdir -p ~/frp && cd ~/frp`
+2. 创建服务端配置 `frps.toml`：
+
+```toml
+bindPort = 7000
+
+auth.method = "token"
+auth.token = "replace-with-long-random-token"
+
+# Optional: dashboard (lock it down with firewall)
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+webServer.user = "admin"
+webServer.password = "replace-with-strong-password"
+```
+
+3. 启动 `frps`：
+  - `docker run -d --name frps --restart unless-stopped -v "$PWD/frps.toml:/etc/frp/frps.toml:ro" -p 7000:7000 -p 7500:7500 ghcr.io/fatedier/frps:v0.61.2 -c /etc/frp/frps.toml`
+4. 放行防火墙端口：
+  - `7000/tcp`（`frpc` 连接用）
+  - `FRP_REMOTE_PORT/tcp`（例如 `18080/tcp`，给最终访问者）
+  - `7500/tcp`（如果开启 dashboard）
+
+说明：`FRP_REMOTE_PORT` 是最终公网访问端口。比如设为 `18080`，公网访问地址为 `http://<你的公网IP>:18080`。
+
+### 2) 在本项目配置并启动 `frpc`
+
+1. 复制环境变量文件（若尚未复制）：
+  - `cp .env.example .env`
+2. 在 `.env` 中设置：
+  - `FRP_SERVER_ADDR=<你的公网服务器IP或域名>`
+  - `FRP_SERVER_PORT=7000`
+  - `FRP_TOKEN=<与frps.toml一致的token>`
+  - `FRP_PROXY_NAME=ios-headers-web`
+  - `FRP_REMOTE_PORT=18080`
+3. 启动主服务栈：
+  - `scripts/deploy_local_stack.zsh up`
+4. 启动穿透客户端（仅 `frpc`）：
+  - `docker compose --env-file .env -f docker-compose.yml --profile tunnel up -d frpc`
+5. 查看日志确认连通：
+  - `docker compose --env-file .env -f docker-compose.yml logs -f frpc`
+
+### 3) 访问验证
+
+- 本地：`http://127.0.0.1:${WEB_PORT:-18080}`
+- 公网：`http://<公网服务器IP>:<FRP_REMOTE_PORT>`（默认 `18080`）
+
+若公网无法访问，优先检查：
+- Ubuntu 安全组/防火墙是否已放行 `FRP_REMOTE_PORT`
+- `FRP_TOKEN` 是否与服务端一致
+- `frpc` 日志是否显示 `start proxy success`
 
 ## 首期站点功能（English UI, No JavaScript）
 

@@ -47,6 +47,42 @@ services:
       web:
         condition: service_healthy
 
+  frpc:
+    image: ghcr.io/fatedier/frpc:v0.61.2
+    container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_frpc
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    depends_on:
+      nginx:
+        condition: service_started
+    environment:
+      FRP_SERVER_ADDR: ${FRP_SERVER_ADDR:-}
+      FRP_SERVER_PORT: ${FRP_SERVER_PORT:-7000}
+      FRP_TOKEN: ${FRP_TOKEN:-}
+      FRP_PROXY_NAME: ${FRP_PROXY_NAME:-ios-headers-web}
+      FRP_REMOTE_PORT: ${FRP_REMOTE_PORT:-18080}
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        [ -n "$$FRP_SERVER_ADDR" ] || { echo "FRP_SERVER_ADDR is required"; exit 1; }
+        [ -n "$$FRP_TOKEN" ] || { echo "FRP_TOKEN is required"; exit 1; }
+        cat >/tmp/frpc.toml <<EOF
+        serverAddr = "$$FRP_SERVER_ADDR"
+        serverPort = $${FRP_SERVER_PORT}
+        auth.method = "token"
+        auth.token = "$$FRP_TOKEN"
+
+        [[proxies]]
+        name = "$$FRP_PROXY_NAME"
+        type = "tcp"
+        localIP = "nginx"
+        localPort = 80
+        remotePort = $${FRP_REMOTE_PORT}
+        EOF
+        exec frpc -c /tmp/frpc.toml
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
     container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_clickhouse

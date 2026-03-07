@@ -169,8 +169,38 @@ clear_cache() {
   echo "redis cache cleared"
 }
 
+tunnel_up() {
+  require_tools
+  compose --profile tunnel up -d frpc
+  echo "frpc tunnel started"
+  compose ps frpc
+}
+
+tunnel_down() {
+  require_tools
+  compose --profile tunnel stop frpc
+  echo "frpc tunnel stopped"
+}
+
+tunnel_restart() {
+  require_tools
+  compose --profile tunnel up -d --force-recreate frpc
+  echo "frpc tunnel restarted"
+  compose ps frpc
+}
+
+tunnel_status() {
+  require_tools
+  compose --profile tunnel ps frpc
+}
+
+tunnel_logs() {
+  require_tools
+  compose --profile tunnel logs -f frpc
+}
+
 usage() {
-  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|init-minio|rebuild-web|clear-cache}"
+  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|init-minio|rebuild-web|clear-cache|tunnel-up|tunnel-down|tunnel-restart|tunnel-status|tunnel-logs}"
 }
 
 case "${1:-}" in
@@ -184,5 +214,10 @@ case "${1:-}" in
   init-minio) init_minio ;;
   rebuild-web) rebuild_web ;;
   clear-cache) clear_cache ;;
+  tunnel-up) tunnel_up ;;
+  tunnel-down) tunnel_down ;;
+  tunnel-restart) tunnel_restart ;;
+  tunnel-status) tunnel_status ;;
+  tunnel-logs) tunnel_logs ;;
   *) usage; exit 1 ;;
 esac
