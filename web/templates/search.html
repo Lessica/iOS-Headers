@@ -21,10 +21,19 @@
       <p class="muted google-subtitle">Explore iOS SDK headers across versions in one search</p>
     </div>
     {% include "_partials/search_form.html" %}
-    <div class="google-actions" aria-label="Quick links">
-      <a class="chip" href="{{ url_for('directory_page', directory_name='UIKitCore') }}">UIKitCore</a>
-      <a class="chip" href="{{ url_for('directory_page', directory_name='Foundation') }}">Foundation</a>
-      <a class="chip" href="{{ url_for('directory_page', directory_name='SpringBoard') }}">SpringBoard</a>
+    <div class="home-link-groups">
+      <div class="google-actions" aria-label="Quick links">
+        <a class="chip" href="{{ url_for('directory_page', directory_name='UIKitCore') }}">UIKitCore</a>
+        <a class="chip" href="{{ url_for('directory_page', directory_name='Foundation') }}">Foundation</a>
+        <a class="chip" href="{{ url_for('directory_page', directory_name='SpringBoard') }}">SpringBoard</a>
+        <a class="chip" href="{{ url_for('search_page', q='backboardd') }}">backboardd</a>
+        <a class="chip" href="{{ url_for('search_page', q='nfcd') }}">nfcd</a>
+      </div>
+      <div class="google-actions" aria-label="Friend links">
+        <a class="chip" href="https://github.com/OwnGoalStudio" target="_blank" rel="noopener noreferrer">OwnGoal Studio</a>
+        <a class="chip" href="https://entitlements.82flex.com/index.html" target="_blank" rel="noopener noreferrer">iOS Entitlements Database</a>
+        <a class="chip" href="https://havoc.app/search/82Flex" target="_blank" rel="noopener noreferrer">Donate</a>
+      </div>
     </div>
   </div>
 </section>

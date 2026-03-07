@@ -489,6 +489,13 @@
       justify-content: center;
     }
 
+    .home-link-groups {
+      display: grid;
+      gap: var(--space-3);
+      justify-items: center;
+      width: 100%;
+    }
+
     .google-subtitle {
       margin-top: var(--space-3);
       font-size: 0.92rem;
@@ -994,7 +1001,8 @@
       }
 
       .search-form-google .search-form-row {
-        gap: var(--space-2);
+        column-gap: var(--space-2);
+        row-gap: var(--space-3);
       }
 
       .top-actions .search-form-row {
