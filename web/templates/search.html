@@ -39,12 +39,12 @@
         <p class="summary-value">{{ format_version_id(latest_version_id) if latest_version_id else "-" }}</p>
       </article>
       <article class="summary-card">
-        <p class="summary-label">Directory matches</p>
-        <p class="summary-value">{{ directory_hits|length if query else 0 }}</p>
+        <p class="summary-label">{{ 'Directories' if selected_dir_name else 'Directory matches' }}</p>
+        <p class="summary-value">{{ directory_total_count if selected_dir_name else (directory_hits|length if query else 0) }}</p>
       </article>
       <article class="summary-card">
-        <p class="summary-label">Owner matches</p>
-        <p class="summary-value">{{ owner_entries|length if query else 0 }}</p>
+        <p class="summary-label">{{ 'Owners' if selected_dir_name else 'Owner matches' }}</p>
+        <p class="summary-value">{{ owner_total_count if selected_dir_name else (owner_entries|length if query else 0) }}</p>
       </article>
     </div>
   </section>

@@ -324,6 +324,29 @@ class Repository:
         )
         return [(str(row[2]), str(row[4]), int(row[3])) for row in rows]
 
+    def count_distinct_directories(self) -> int:
+        rows = self._ch.query(
+            """
+            SELECT countDistinct(dir_name)
+            FROM paths
+            """
+        )
+        if not rows:
+            return 0
+        return int(rows[0][0])
+
+    def count_distinct_owners(self) -> int:
+        rows = self._ch.query(
+            """
+            SELECT countDistinct(owner_name_lc)
+            FROM symbol_presence
+            WHERE owner_name_lc != ''
+            """
+        )
+        if not rows:
+            return 0
+        return int(rows[0][0])
+
     def list_version_ids_for_paths(self, path_ids: list[int]) -> dict[int, list[str]]:
         if not path_ids:
             return {}

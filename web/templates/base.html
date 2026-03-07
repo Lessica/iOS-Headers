@@ -136,6 +136,14 @@
       text-shadow: 0 6px 16px rgba(59, 130, 246, 0.12);
     }
 
+    .brand-subtitle {
+      margin: 4px 0 0;
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+
     @media (prefers-color-scheme: dark) {
       .brand-title {
         background: linear-gradient(90deg, #cbd5e1 0%, #93c5fd 38%, #a5b4fc 72%, #94a3b8 100%);
@@ -244,6 +252,11 @@
     .title-md {
       font-size: 0.95rem;
       font-weight: 620;
+    }
+
+    .text-break {
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .muted {
@@ -958,6 +971,10 @@
         font-size: 1.62rem;
       }
 
+      .brand-subtitle {
+        font-size: 0.72rem;
+      }
+
       .metric-strip {
         grid-template-columns: 1fr;
       }
@@ -1007,6 +1024,7 @@
           <a class="brand-link" href="{{ url_for('search_page') }}" aria-label="Go to homepage">
             <p class="brand-title">iOS Headers</p>
           </a>
+          <p class="brand-subtitle">Explore iOS SDK headers across versions in one search</p>
         </div>
       </div>
     </header>

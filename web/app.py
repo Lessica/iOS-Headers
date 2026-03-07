@@ -156,11 +156,15 @@ def _render_search_page(
 
     directory_files: list[FileRef] = []
     directory_total_unique_paths_count: int | None = None
+    directory_total_count: int | None = None
+    owner_total_count: int | None = None
     directory_has_next_page = False
     directory_has_prev_page = False
     directory_next_cursor: str | None = None
     directory_prev_cursor: str | None = None
     if selected_dir_name and latest_version_num is not None:
+        directory_total_count = repo.count_distinct_directories()
+        owner_total_count = repo.count_distinct_owners()
         directory_total_unique_paths_count = repo.count_unique_paths_in_directory_name(selected_dir_name)
         (
             directory_files,
@@ -211,6 +215,8 @@ def _render_search_page(
         directory_next_cursor=directory_next_cursor,
         directory_prev_cursor=directory_prev_cursor,
         directory_total_unique_paths_count=directory_total_unique_paths_count,
+        directory_total_count=directory_total_count,
+        owner_total_count=owner_total_count,
         directory_page_size=directory_page_size,
         directory_direction=directory_direction,
         latest_version_num=latest_version_num,
