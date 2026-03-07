@@ -8,6 +8,28 @@
 {% endblock %}
 {% block content %}
 <div class="flow">
+  <section class="panel stack-4">
+    <h1 class="title-xl text-break">{{ file_name }}</h1>
+    <p class="path path-view">{{ absolute_path }}</p>
+    <div class="meta-row">
+      <span class="chip current">{{ format_version_id(version_id) }}</span>
+      <span class="chip">{{ line_count }} lines</span>
+      <span class="chip">{{ file_size_text }}</span>
+      {% if compare_to_version_id %}
+      <a
+        class="chip chip-action"
+        href="{{ url_for('view_header_diff', from_version_id=encode_version_id(version_id), to_version_id=encode_version_id(compare_to_version_id), absolute_path=absolute_path.lstrip('/')) }}"
+      >Compare</a>
+      {% endif %}
+      <button class="chip chip-action" id="download-source-btn" type="button">Download</button>
+    </div>
+  </section>
+
+  <section class="panel stack-3">
+    <h2 class="title-lg">Switch to…</h2>
+    {% include "_partials/version_switch.html" %}
+  </section>
+
   <section class="panel-subtle stack-3">
     <div class="top-actions view-top-actions">
       <form class="search-form" id="view-search-form" method="get" action="{{ url_for('search_page') }}">
@@ -30,28 +52,6 @@
         {% endif %}
       </div>
     </div>
-  </section>
-
-  <section class="panel stack-4">
-    <h1 class="title-xl text-break">{{ file_name }}</h1>
-    <p class="path path-view">{{ absolute_path }}</p>
-    <div class="meta-row">
-      <span class="chip current">{{ format_version_id(version_id) }}</span>
-      <span class="chip">{{ line_count }} lines</span>
-      <span class="chip">{{ file_size_text }}</span>
-      {% if compare_to_version_id %}
-      <a
-        class="chip chip-action"
-        href="{{ url_for('view_header_diff', from_version_id=encode_version_id(version_id), to_version_id=encode_version_id(compare_to_version_id), absolute_path=absolute_path.lstrip('/')) }}"
-      >Compare</a>
-      {% endif %}
-      <button class="chip chip-action" id="download-source-btn" type="button">Download</button>
-    </div>
-  </section>
-
-  <section class="panel stack-3">
-    <h2 class="title-lg">Switch to…</h2>
-    {% include "_partials/version_switch.html" %}
   </section>
 
   <div class="code-area">
