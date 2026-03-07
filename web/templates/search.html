@@ -24,6 +24,7 @@
     <div class="home-link-groups">
       <div class="google-actions" aria-label="Quick links">
         <a class="chip" href="{{ url_for('search_page', q='UIView') }}">UIView</a>
+        <a class="chip" href="{{ url_for('directory_page', directory_name='Foundation', q='NSURLSession') }}">NSURLSession</a>
         <a class="chip" href="{{ url_for('directory_page', directory_name='Foundation') }}">Foundation</a>
         <a class="chip" href="{{ url_for('directory_page', directory_name='SpringBoard') }}">SpringBoard</a>
         <a class="chip" href="{{ url_for('directory_page', directory_name='backboardd') }}">backboardd</a>
@@ -58,7 +59,7 @@
     </div>
   </section>
 
-  {% if query %}
+  {% if query and not selected_dir_name %}
   <section class="panel stack-4" aria-label="Directory results">
     <div class="section-head">
       <h2 class="title-lg">Directory Matches</h2>
@@ -128,7 +129,14 @@
   {% if selected_dir_name %}
   <section class="panel stack-4" aria-label="Directory files">
     <div class="section-head">
-      <h2 class="title-lg">Files in {{ selected_dir_name }}</h2>
+      <h2 class="title-lg">
+        Files in
+        {% if query %}
+        <a href="{{ url_for('directory_page', directory_name=selected_dir_name) }}">{{ selected_dir_name }}</a>
+        {% else %}
+        {{ selected_dir_name }}
+        {% endif %}
+      </h2>
       <span class="chip">{{ directory_total_unique_paths_count if directory_total_unique_paths_count is not none else directory_file_entries|length }}</span>
     </div>
     {% if directory_file_entries %}
@@ -166,13 +174,8 @@
     {% endif %}
 
     {% if directory_has_prev_page or directory_has_next_page %}
-    {% if query %}
-      {% set prev_page_url = url_for('search_page', q=query, dir=selected_dir_name, dcursor=directory_prev_cursor, ddir='prev', dsize=directory_page_size) %}
-      {% set next_page_url = url_for('search_page', q=query, dir=selected_dir_name, dcursor=directory_next_cursor, ddir='next', dsize=directory_page_size) %}
-    {% else %}
-      {% set prev_page_url = url_for('directory_page', directory_name=selected_dir_name, dcursor=directory_prev_cursor, ddir='prev', dsize=directory_page_size) %}
-      {% set next_page_url = url_for('directory_page', directory_name=selected_dir_name, dcursor=directory_next_cursor, ddir='next', dsize=directory_page_size) %}
-    {% endif %}
+    {% set prev_page_url = url_for('directory_page', directory_name=selected_dir_name, q=query, dcursor=directory_prev_cursor, ddir='prev', dsize=directory_page_size) %}
+    {% set next_page_url = url_for('directory_page', directory_name=selected_dir_name, q=query, dcursor=directory_next_cursor, ddir='next', dsize=directory_page_size) %}
     <div class="meta-row pagination-row" aria-label="Directory files pagination">
       {% if directory_has_prev_page and directory_prev_cursor %}
       <a class="btn" href="{{ prev_page_url }}">Previous</a>

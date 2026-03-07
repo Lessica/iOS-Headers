@@ -377,14 +377,23 @@ class Repository:
             bucket.append(str(version_id))
         return version_ids_by_path
 
-    def count_unique_paths_in_directory_name(self, directory_name: str) -> int:
-        rows = self._ch.query(
+    def count_unique_paths_in_directory_name(self, directory_name: str, keyword: str = "") -> int:
+        keyword_lc = keyword.strip().lower()
+        keyword_clause = (
             """
+            AND positionUTF8(file_name_lc, %(keyword_lc)s) > 0
+            """
+            if keyword_lc
+            else ""
+        )
+        rows = self._ch.query(
+            f"""
             SELECT count()
             FROM paths
             WHERE dir_name = %(directory_name)s
+                {keyword_clause}
             """,
-            {"directory_name": directory_name},
+            {"directory_name": directory_name, "keyword_lc": keyword_lc},
         )
         if not rows:
             return 0
@@ -397,10 +406,22 @@ class Repository:
         page_size: int,
         cursor: str | None,
         direction: str,
+        keyword: str = "",
     ) -> tuple[list[FileRef], bool, bool, str | None, str | None]:
         safe_page_size = max(1, page_size)
         query_limit = safe_page_size + 1
         safe_direction = "prev" if direction == "prev" else "next"
+        keyword_lc = keyword.strip().lower()
+        keyword_clause = (
+            """
+                AND positionUTF8(
+                    dictGet('ios_headers.paths_by_id_dict', 'file_name_lc', toUInt64(fi.path_id)),
+                    %(keyword_lc)s
+                ) > 0
+            """
+            if keyword_lc
+            else ""
+        )
 
         if safe_direction == "prev":
             order_sql = "DESC"
@@ -458,6 +479,7 @@ class Repository:
                     'dir_name',
                     toUInt64(fi.path_id)
                 ) = %(directory_name)s
+                {keyword_clause}
                 {cursor_clause}
             ORDER BY absolute_path {order_sql}
             LIMIT %(limit)s
@@ -465,6 +487,7 @@ class Repository:
             {
                 "version_num": version_num,
                 "directory_name": directory_name,
+                "keyword_lc": keyword_lc,
                 "cursor": cursor or "",
                 "limit": query_limit,
             },

@@ -1,4 +1,4 @@
-<form method="get" action="{{ url_for('search_page') }}" class="search-form{% if search_mode == 'home' %} search-form-google{% endif %}" role="search" aria-label="Header search form">
+<form method="get" action="{{ url_for('directory_page', directory_name=selected_dir_name) if selected_dir_name else url_for('search_page') }}" class="search-form{% if search_mode == 'home' %} search-form-google{% endif %}" role="search" aria-label="Header search form">
   <label class="sr-only" for="q">Search keyword</label>
   <div class="search-form-row">
     <input
@@ -7,7 +7,7 @@
       type="text"
       name="q"
       value="{{ query }}"
-      placeholder="Search by framework, class owner, or directory"
+      placeholder="{{ ('Search in ' ~ selected_dir_name ~ '…') if selected_dir_name else 'Search by framework, class owner, or directory' }}"
       required
       autocomplete="off"
       spellcheck="false"

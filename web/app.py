@@ -100,23 +100,25 @@ def directory_page(directory_name: str) -> str:
     if not selected_dir_name:
         abort(404)
 
+    raw_query = request.args.get("q", "")
     raw_directory_cursor = request.args.get("dcursor", "")
     raw_directory_direction = request.args.get("ddir", "")
     raw_directory_page_size = request.args.get("dsize", "")
 
+    query = raw_query.strip()
     directory_cursor = raw_directory_cursor.strip() or None
     directory_direction = _normalize_directory_direction(raw_directory_direction)
     directory_page_size = _parse_directory_page_size(raw_directory_page_size)
     has_effective_args = _has_effective_search_args(
-        raw_query="",
-        raw_selected_dir_name="",
+        raw_query=raw_query,
+        raw_selected_dir_name=selected_dir_name,
         raw_directory_cursor=raw_directory_cursor,
         raw_directory_direction=raw_directory_direction,
         raw_directory_page_size=raw_directory_page_size,
     )
 
     return _render_search_page(
-        query="",
+        query=query,
         selected_dir_name=selected_dir_name,
         directory_cursor=directory_cursor,
         directory_direction=directory_direction,
@@ -148,7 +150,11 @@ def _render_search_page(
 
     query_started_at = time.perf_counter()
 
-    search_result = search_service.search(query)
+    should_run_global_search = bool(query and not selected_dir_name)
+    if should_run_global_search:
+        search_result = search_service.search(query)
+    else:
+        search_result = search_service.search("")
 
     latest = repo.get_latest_version()
     latest_version_num = latest[0] if latest else None
@@ -165,7 +171,10 @@ def _render_search_page(
     if selected_dir_name and latest_version_num is not None:
         directory_total_count = repo.count_distinct_directories()
         owner_total_count = repo.count_distinct_owners()
-        directory_total_unique_paths_count = repo.count_unique_paths_in_directory_name(selected_dir_name)
+        directory_total_unique_paths_count = repo.count_unique_paths_in_directory_name(
+            selected_dir_name,
+            keyword=query,
+        )
         (
             directory_files,
             directory_has_prev_page,
@@ -178,6 +187,7 @@ def _render_search_page(
             page_size=directory_page_size,
             cursor=directory_cursor,
             direction=directory_direction,
+            keyword=query,
         )
 
     owner_path_ids = [path_id for _version_id, _absolute_path, path_id in search_result.owner_hits]
