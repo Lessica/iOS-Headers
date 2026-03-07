@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ absolute_path }} · Diff · iOS Headers{% endblock %}
+{% block footer_inline %}
+{% if show_query_elapsed_ms %}
+<span class="footer-sep">·</span>
+<span>{{ query_elapsed_ms }} ms</span>
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="flow">
+  <section class="panel stack-4">
+    <h1 class="title-xl text-break">{{ file_name }}</h1>
+    <p class="path path-view">{{ absolute_path }}</p>
+    <div class="meta-row">
+      <a class="chip current" href="{{ url_for('view_header', version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(from_version_id) }}</a>
+      <span class="chip">→</span>
+      <a class="chip" href="{{ url_for('view_header', version_id=encode_version_id(to_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(to_version_id) }}</a>
+      <span class="chip">{{ from_line_count }} → {{ to_line_count }} lines</span>
+    </div>
+  </section>
+
+  <section class="panel-subtle stack-3">
+    <div class="top-actions view-top-actions">
+      <form class="search-form" id="diff-search-form" method="get" action="{{ url_for('search_page') }}">
+        <label class="sr-only" for="diff-search-q">Search query</label>
+        <div class="search-form-row">
+          <input
+            class="search-input"
+            id="diff-search-q"
+            name="q"
+            type="search"
+            placeholder="Search headers, owners, or directories"
+            autocomplete="off"
+          >
+        </div>
+      </form>
+      <div class="view-action-row">
+        <button class="btn btn-search" type="submit" form="diff-search-form">Search</button>
+        {% if view_directory_name %}
+        <a class="btn" href="{{ url_for('directory_page', directory_name=view_directory_name) }}">View Directory</a>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  {% if has_changes %}
+  <div class="code-area">
+    <div class="code-block"><code class="language-diff">{{ diff_text }}</code></div>
+  </div>
+  {% else %}
+  <section class="empty">No differences between these versions for this header.</section>
+  {% endif %}
+</div>
+<script>
+  (() => {
+    const diffCode = document.querySelector('code.language-diff');
+    if (!diffCode) {
+      return;
+    }
+
+    const classifyLine = (line) => {
+      if (line.startsWith('+++ ') || line.startsWith('--- ')) {
+        return 'diff-file';
+      }
+      if (line.startsWith('@@')) {
+        return 'diff-hunk';
+      }
+      if (line.startsWith('+')) {
+        return 'diff-add';
+      }
+      if (line.startsWith('-')) {
+        return 'diff-del';
+      }
+      if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('\\')) {
+        return 'diff-meta';
+      }
+      return '';
+    };
+
+    const lines = (diffCode.textContent || '').split('\n');
+    const fragment = document.createDocumentFragment();
+
+    lines.forEach((line, index) => {
+      const span = document.createElement('span');
+      const tokenClass = classifyLine(line);
+      if (tokenClass) {
+        span.className = `token ${tokenClass}`;
+      }
+      span.textContent = line;
+      fragment.appendChild(span);
+
+      if (index < lines.length - 1) {
+        fragment.appendChild(document.createTextNode('\n'));
+      }
+    });
+
+    diffCode.replaceChildren(fragment);
+  })();
+</script>
+{% endblock %}

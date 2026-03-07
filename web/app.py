@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import hashlib
 import logging
 import os
@@ -38,7 +39,7 @@ repo = Repository(ClickHouseClient(settings), cache=cache)
 store = MinioStore(settings)
 search_service = SearchService(repo)
 app.jinja_env.globals["encode_version_id"] = lambda version_id: _encode_version_id_for_url(version_id)
-app.jinja_env.globals["format_version_id"] = lambda version_id: _format_version_id_for_display(version_id)
+app.jinja_env.globals["format_version_id"] = lambda version_id: _format_version_id_for_display(version_id, separator=" · ")
 OWNER_VERSIONS_PILL_LIMIT = 15
 DEFAULT_DIRECTORY_PAGE_SIZE = 100
 MAX_DIRECTORY_PAGE_SIZE = 1000
@@ -258,6 +259,64 @@ def view_latest_header(absolute_path: str) -> Any:
             version_id=_encode_version_id_for_url(result.version_id),
             absolute_path=result.absolute_path.lstrip("/"),
         )
+    )
+
+
+@app.get("/v/<from_version_id>...<to_version_id>/<path:absolute_path>")
+def view_header_diff(from_version_id: str, to_version_id: str, absolute_path: str) -> str:
+    query_started_at = time.perf_counter()
+
+    decoded_from_version_id = _decode_version_id_from_url(from_version_id)
+    decoded_to_version_id = _decode_version_id_from_url(to_version_id)
+    normalized_path = _normalize_absolute_path(absolute_path)
+    if not normalized_path:
+        abort(404)
+
+    from_version_num = repo.get_version_num(decoded_from_version_id)
+    to_version_num = repo.get_version_num(decoded_to_version_id)
+    if from_version_num is None or to_version_num is None:
+        abort(404)
+
+    from_content_ref = repo.get_file_content_ref(version_num=from_version_num, absolute_path=normalized_path)
+    to_content_ref = repo.get_file_content_ref(version_num=to_version_num, absolute_path=normalized_path)
+    if from_content_ref is None or to_content_ref is None:
+        abort(404)
+
+    from_source_bytes = store.read_slice(
+        object_key=from_content_ref.pack_object_key,
+        offset=from_content_ref.pack_offset,
+        length=from_content_ref.pack_length,
+    )
+    to_source_bytes = store.read_slice(
+        object_key=to_content_ref.pack_object_key,
+        offset=to_content_ref.pack_offset,
+        length=to_content_ref.pack_length,
+    )
+
+    from_source_text = from_source_bytes.decode("utf-8", errors="replace")
+    to_source_text = to_source_bytes.decode("utf-8", errors="replace")
+    diff_text = _build_unified_diff_text(
+        absolute_path=normalized_path,
+        from_version_id=from_content_ref.version_id,
+        to_version_id=to_content_ref.version_id,
+        from_source_text=from_source_text,
+        to_source_text=to_source_text,
+    )
+
+    query_elapsed_ms = int((time.perf_counter() - query_started_at) * 1000)
+    return render_template(
+        "diff.html",
+        absolute_path=normalized_path,
+        file_name=os.path.basename(normalized_path.rstrip("/")) or normalized_path,
+        view_directory_name=_extract_directory_name(normalized_path),
+        from_version_id=from_content_ref.version_id,
+        to_version_id=to_content_ref.version_id,
+        from_line_count=len(from_source_text.splitlines()),
+        to_line_count=len(to_source_text.splitlines()),
+        has_changes=bool(diff_text),
+        diff_text=diff_text,
+        query_elapsed_ms=query_elapsed_ms,
+        show_query_elapsed_ms=settings.show_query_elapsed_ms,
     )
 
 
@@ -561,7 +620,7 @@ def _decode_version_id_from_url(raw_version_id: str) -> str:
     return "".join(chars)
 
 
-def _format_version_id_for_display(version_id: str) -> str:
+def _format_version_id_for_display(version_id: str, separator: str = "_") -> str:
     value = version_id.strip()
     if not value:
         return value
@@ -572,7 +631,7 @@ def _format_version_id_for_display(version_id: str) -> str:
     major = major.strip()
     build = build.strip()
     if major and build:
-        return f"{major} · {build}"
+        return f"{major}{separator}{build}"
     return major or build
 
 
@@ -602,6 +661,29 @@ def _format_bytes_for_display(size_bytes: int | None) -> str:
     if unit_index == 0:
         return f"{size:.0f} {units[unit_index]}"
     return f"{size:.1f} {units[unit_index]}"
+
+
+def _build_unified_diff_text(
+    absolute_path: str,
+    from_version_id: str,
+    to_version_id: str,
+    from_source_text: str,
+    to_source_text: str,
+) -> str:
+    from_lines = from_source_text.splitlines()
+    to_lines = to_source_text.splitlines()
+
+    from_label = f"a/{_format_version_id_for_display(from_version_id)}{absolute_path}"
+    to_label = f"b/{_format_version_id_for_display(to_version_id)}{absolute_path}"
+    diff_lines = difflib.unified_diff(
+        from_lines,
+        to_lines,
+        fromfile=from_label,
+        tofile=to_label,
+        lineterm="",
+        n=3,
+    )
+    return "\n".join(diff_lines)
 
 
 def _view_cache_key(version_num: int, path_id: int, enable_symbol_matrix: bool) -> str:

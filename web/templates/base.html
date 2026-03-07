@@ -950,6 +950,27 @@
       color: color-mix(in srgb, var(--accent), var(--text) 28%);
     }
 
+    .code-block .token.diff-file,
+    .code-block .token.diff-hunk,
+    .code-block .token.diff-meta {
+      color: color-mix(in srgb, var(--accent), var(--text) 18%);
+    }
+
+    .code-block .token.diff-file,
+    .code-block .token.diff-hunk {
+      font-weight: 620;
+    }
+
+    .code-block .token.diff-add {
+      color: var(--ok);
+      background: var(--ok-soft);
+    }
+
+    .code-block .token.diff-del {
+      color: var(--no);
+      background: var(--no-soft);
+    }
+
     .empty {
       border: 1px dashed var(--line-strong);
       border-radius: var(--radius-sm);

@@ -19,11 +19,6 @@
     </div>
   </section>
 
-  <section class="panel stack-3">
-    <h2 class="title-lg">Versions</h2>
-    {% include "_partials/version_switch.html" %}
-  </section>
-
   <section class="panel-subtle stack-3">
     <div class="top-actions view-top-actions">
       <form class="search-form" id="view-search-form" method="get" action="{{ url_for('search_page') }}">
@@ -46,6 +41,11 @@
         {% endif %}
       </div>
     </div>
+  </section>
+
+  <section class="panel stack-3">
+    <h2 class="title-lg">Versions</h2>
+    {% include "_partials/version_switch.html" %}
   </section>
 
   <div class="code-area">
