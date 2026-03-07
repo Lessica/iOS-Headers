@@ -15,6 +15,7 @@
       <span class="chip current">{{ format_version_id(version_id) }}</span>
       <span class="chip">{{ line_count }} lines</span>
       <span class="chip">{{ file_size_text }}</span>
+      <button class="chip chip-action" id="download-source-btn" type="button">Download</button>
     </div>
   </section>
 
@@ -23,7 +24,32 @@
     {% include "_partials/version_switch.html" %}
   </section>
 
-  <div class="code-block"><code id="source-code" class="language-objectivec">{{ rendered_source_html|safe }}</code></div>
+  <section class="panel-subtle stack-3">
+    <div class="top-actions">
+      <form class="search-form" method="get" action="{{ url_for('search_page') }}" style="flex:1;min-width:min(100%,420px);">
+        <label class="sr-only" for="view-search-q">Search query</label>
+        <div class="search-form-row">
+          <input
+            class="search-input"
+            id="view-search-q"
+            name="q"
+            type="search"
+            placeholder="Search headers, owners, or directories"
+            autocomplete="off"
+          >
+          <button class="btn btn-search" type="submit">Search</button>
+        </div>
+      </form>
+      {% if view_directory_name %}
+      <a class="btn" href="{{ url_for('directory_page', directory_name=view_directory_name) }}">View Directory</a>
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="code-area">
+    <button class="btn btn-code-copy" id="copy-source-btn" type="button">Copy Source</button>
+    <div class="code-block"><code id="source-code" class="language-objectivec" data-file-name="{{ file_name }}">{{ rendered_source_html|safe }}</code></div>
+  </div>
 
   {% if enable_symbol_matrix %}
   <details class="panel stack-3 matrix-collapsible">
@@ -32,41 +58,154 @@
   </details>
   {% endif %}
 </div>
-<script src="{{ url_for('static', filename='vendor/prism/prism.bundle.min.js') }}"></script>
-{% if enable_symbol_matrix %}
 <script id="source-line-availability" type="application/json">{{ source_line_availability | tojson }}</script>
-{% endif %}
 <script>
   (() => {
     const sourceCode = document.getElementById('source-code');
-    if (!sourceCode || typeof Prism === 'undefined') {
+    if (!sourceCode) {
       return;
     }
+    const copySourceButton = document.getElementById('copy-source-btn');
+    const downloadSourceButton = document.getElementById('download-source-btn');
+    const sourceFileName = sourceCode.getAttribute('data-file-name') || 'source.h';
+    const codeArea = sourceCode.closest('.code-area');
 
-    const grammar = Prism.languages.objectivec || Prism.languages.c || Prism.languages.clike;
-    if (!grammar) {
-      return;
-    }
-
-    const appendToken = (token, parent) => {
-      if (Array.isArray(token)) {
-        for (const child of token) {
-          appendToken(child, parent);
-        }
+    const sourceText = () => sourceCode.textContent || '';
+    const setButtonLabelTemporarily = (button, successLabel, defaultLabel) => {
+      if (!button) {
         return;
       }
-
-      if (typeof token === 'string') {
-        parent.appendChild(document.createTextNode(token));
-        return;
-      }
-
-      const span = document.createElement('span');
-      const aliases = Array.isArray(token.alias) ? token.alias : (token.alias ? [token.alias] : []);
-      span.className = ['token', token.type, ...aliases].join(' ');
-      appendToken(token.content, span);
-      parent.appendChild(span);
+      button.textContent = successLabel;
+      window.setTimeout(() => {
+        button.textContent = defaultLabel;
+      }, 1200);
     };
+
+    if (copySourceButton) {
+      copySourceButton.addEventListener('click', async () => {
+        const text = sourceText();
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const fallback = document.createElement('textarea');
+            fallback.value = text;
+            fallback.setAttribute('readonly', '');
+            fallback.style.position = 'absolute';
+            fallback.style.left = '-9999px';
+            document.body.appendChild(fallback);
+            fallback.select();
+            document.execCommand('copy');
+            document.body.removeChild(fallback);
+          }
+          setButtonLabelTemporarily(copySourceButton, 'Copied', 'Copy Source');
+        } catch (_error) {
+          setButtonLabelTemporarily(copySourceButton, 'Copy Failed', 'Copy Source');
+        }
+      });
+
+      const updateCopyButtonPlacement = () => {
+        if (!codeArea) {
+          return;
+        }
+
+        const areaRect = codeArea.getBoundingClientRect();
+        const shouldFix = areaRect.top < 0 && areaRect.bottom > 0;
+        copySourceButton.classList.toggle('is-fixed', shouldFix);
+
+        if (shouldFix) {
+          const rootStyles = window.getComputedStyle(document.documentElement);
+          const spacing = Number.parseFloat(rootStyles.getPropertyValue('--space-4')) || 16;
+          const fixedLeft = Math.max(10, areaRect.right - copySourceButton.offsetWidth - spacing);
+          copySourceButton.style.left = `${fixedLeft}px`;
+          copySourceButton.style.right = 'auto';
+        } else {
+          copySourceButton.style.left = '';
+          copySourceButton.style.right = '';
+        }
+      };
+
+      updateCopyButtonPlacement();
+      window.addEventListener('scroll', updateCopyButtonPlacement, { passive: true });
+      window.addEventListener('resize', updateCopyButtonPlacement);
+    }
+
+    if (downloadSourceButton) {
+      downloadSourceButton.addEventListener('click', () => {
+        const blob = new Blob([sourceText()], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = sourceFileName || 'source.h';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        setButtonLabelTemporarily(downloadSourceButton, 'Downloaded', 'Download');
+      });
+    }
+
+    const keywordPattern = /(?:@(import|interface|implementation|end|property|protocol|class|selector|synthesize|dynamic|required|optional|public|private|protected|package|try|catch|finally|throw|autoreleasepool)\b|\b(?:if|else|for|while|do|switch|case|default|break|continue|goto|return|typedef|struct|union|enum|sizeof|const|static|extern|inline|volatile|restrict|signed|unsigned|short|long|void|char|int|float|double|_Bool|BOOL|bool|id|instancetype|Class|SEL|IMP|Protocol|NSString|NSArray|NSDictionary|NSSet|NSNumber|NSData|NSError|NSInteger|NSUInteger|CGFloat|NSTimeInterval|CFTypeRef|nullable|nonnull|_Nullable|_Nonnull|_Null_unspecified|null_resettable|NS_ASSUME_NONNULL_BEGIN|NS_ASSUME_NONNULL_END|NS_SWIFT_NAME|NS_REFINED_FOR_SWIFT|NS_DESIGNATED_INITIALIZER|NS_UNAVAILABLE|NS_EXTENSION_UNAVAILABLE|NS_REQUIRES_SUPER|NS_NOESCAPE|NS_OPTIONS|NS_ENUM|CF_ENUM|CF_OPTIONS|API_AVAILABLE|API_DEPRECATED|API_UNAVAILABLE|API_DEPRECATED_WITH_REPLACEMENT|nonatomic|atomic|strong|weak|copy|assign|retain|unsafe_unretained|readonly|readwrite|getter|setter|class|dynamic|direct)\b)/g;
+    const tokenPattern = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/|@?"(?:\\.|[^"\\])*"|#\s*(?:if|ifdef|ifndef|elif|else|endif|define|undef|include|import|pragma)\b[^\n]*)/g;
+
+    const highlightKeywords = (text) => {
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      let keywordMatch;
+
+      while ((keywordMatch = keywordPattern.exec(text)) !== null) {
+        if (keywordMatch.index > cursor) {
+          fragment.appendChild(document.createTextNode(text.slice(cursor, keywordMatch.index)));
+        }
+
+        const span = document.createElement('span');
+        span.className = 'token keyword';
+        span.textContent = keywordMatch[0];
+        fragment.appendChild(span);
+        cursor = keywordMatch.index + keywordMatch[0].length;
+      }
+
+      if (cursor < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(cursor)));
+      }
+
+      keywordPattern.lastIndex = 0;
+      return fragment;
+    };
+
+    const highlightTextSegment = (text) => {
+      const fragment = document.createDocumentFragment();
+      let cursor = 0;
+      let tokenMatch;
+
+      while ((tokenMatch = tokenPattern.exec(text)) !== null) {
+        if (tokenMatch.index > cursor) {
+          fragment.appendChild(highlightKeywords(text.slice(cursor, tokenMatch.index)));
+        }
+
+        const tokenText = tokenMatch[0];
+        const span = document.createElement('span');
+        if (tokenText.startsWith('//') || tokenText.startsWith('/*')) {
+          span.className = 'token comment';
+        } else if (tokenText.startsWith('#')) {
+          span.className = 'token directive';
+        } else {
+          span.className = 'token string';
+        }
+        span.textContent = tokenText;
+        fragment.appendChild(span);
+        cursor = tokenMatch.index + tokenText.length;
+      }
+
+      if (cursor < text.length) {
+        fragment.appendChild(highlightKeywords(text.slice(cursor)));
+      }
+
+      tokenPattern.lastIndex = 0;
+      return fragment;
+    };
+
+    const highlightText = (text) => highlightTextSegment(text);
 
     const textNodes = [];
     const walker = document.createTreeWalker(sourceCode, NodeFilter.SHOW_TEXT, {
@@ -76,6 +215,9 @@
         }
         const parent = node.parentElement;
         if (!parent) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        if (parent.closest('a[href^="/v/"]')) {
           return NodeFilter.FILTER_REJECT;
         }
         if (parent.closest('.token')) {
@@ -90,9 +232,7 @@
     }
 
     for (const node of textNodes) {
-      const tokens = Prism.tokenize(node.nodeValue, grammar);
-      const fragment = document.createDocumentFragment();
-      appendToken(tokens, fragment);
+      const fragment = highlightText(node.nodeValue);
       node.parentNode.replaceChild(fragment, node);
     }
     const lineAvailabilityPayload = document.getElementById('source-line-availability');

@@ -276,6 +276,14 @@
       background: var(--accent-soft);
     }
 
+    .chip-action {
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      margin: 0;
+      vertical-align: middle;
+    }
+
     .version-pill-row {
       margin-top: var(--space-2);
     }
@@ -809,6 +817,24 @@
       line-height: 1.52;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size: 0.82rem;
+    }
+
+    .code-area {
+      position: relative;
+    }
+
+    .btn-code-copy {
+      position: absolute;
+      top: var(--space-3);
+      right: var(--space-4);
+      z-index: 3;
+    }
+
+    .btn-code-copy.is-fixed {
+      position: fixed;
+      top: var(--space-4);
+      right: var(--space-4);
+      z-index: 30;
     }
 
     .source-hover-tip {

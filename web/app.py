@@ -302,19 +302,13 @@ def view_header(version_id: str, absolute_path: str) -> str:
     versions = repo.list_versions_for_path(content_ref.path_id)
     timings_ms["query_versions_for_path"] = int((time.perf_counter() - segment_started_at) * 1000)
 
-    symbols: list[tuple[str, str, str, int]] = []
-    presence_map: dict[tuple[str, str, str], set[int]] = {}
-    if settings.enable_symbol_matrix:
-        segment_started_at = time.perf_counter()
-        symbols = repo.list_symbols_for_content(content_ref.content_id)
-        timings_ms["query_symbols_for_content"] = int((time.perf_counter() - segment_started_at) * 1000)
+    segment_started_at = time.perf_counter()
+    symbols = repo.list_symbols_for_content(content_ref.content_id)
+    timings_ms["query_symbols_for_content"] = int((time.perf_counter() - segment_started_at) * 1000)
 
-        segment_started_at = time.perf_counter()
-        presence_map = repo.get_symbol_presence_map(content_ref.path_id)
-        timings_ms["query_symbol_presence_map"] = int((time.perf_counter() - segment_started_at) * 1000)
-    else:
-        timings_ms["query_symbols_for_content"] = 0
-        timings_ms["query_symbol_presence_map"] = 0
+    segment_started_at = time.perf_counter()
+    presence_map = repo.get_symbol_presence_map(content_ref.path_id)
+    timings_ms["query_symbol_presence_map"] = int((time.perf_counter() - segment_started_at) * 1000)
 
     segment_started_at = time.perf_counter()
     same_directory = os.path.dirname(content_ref.absolute_path)
@@ -340,6 +334,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
         version_id=model.ref.version_id,
         absolute_path=model.ref.absolute_path,
         file_name=os.path.basename(model.ref.absolute_path.rstrip("/")) or model.ref.absolute_path,
+        view_directory_name=_extract_directory_name(model.ref.absolute_path),
         versions=model.versions,
         rendered_source_html=model.rendered_source_html,
         line_count=len(model.source_text.splitlines()),
@@ -456,6 +451,16 @@ def _normalize_absolute_path(raw_path: str) -> str:
     if not candidate.startswith("/"):
         candidate = f"/{candidate}"
     return candidate
+
+
+def _extract_directory_name(absolute_path: str) -> str | None:
+    normalized = absolute_path.rstrip("/")
+    parent_path = os.path.dirname(normalized)
+    if not parent_path or parent_path == "/":
+        return None
+
+    directory_name = os.path.basename(parent_path.rstrip("/"))
+    return directory_name or None
 
 
 def _build_search_file_entry(file_ref: FileRef, version_ids: list[str] | None = None) -> dict[str, Any]:
