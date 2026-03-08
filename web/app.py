@@ -41,8 +41,7 @@ search_service = SearchService(repo)
 app.jinja_env.globals["encode_version_id"] = lambda version_id: _encode_version_id_for_url(version_id)
 app.jinja_env.globals["format_version_id"] = lambda version_id: _format_version_id_for_display(version_id, separator=" · ")
 OWNER_VERSIONS_PILL_LIMIT = 15
-DEFAULT_DIRECTORY_PAGE_SIZE = 100
-MAX_DIRECTORY_PAGE_SIZE = 1000
+DEFAULT_DIRECTORY_PAGE_SIZE = 50
 SYMBOL_TYPE_PRIORITY = {
     "ivar": 0,
     "property": 1,
@@ -70,19 +69,17 @@ def search_page() -> str:
     raw_selected_dir_name = request.args.get("dir", "")
     raw_directory_cursor = request.args.get("dcursor", "")
     raw_directory_direction = request.args.get("ddir", "")
-    raw_directory_page_size = request.args.get("dsize", "")
 
     query = raw_query.strip()
     selected_dir_name = raw_selected_dir_name.strip()
     directory_cursor = raw_directory_cursor.strip() or None
     directory_direction = _normalize_directory_direction(raw_directory_direction)
-    directory_page_size = _parse_directory_page_size(raw_directory_page_size)
+    directory_page_size = DEFAULT_DIRECTORY_PAGE_SIZE
     has_effective_args = _has_effective_search_args(
         raw_query=raw_query,
         raw_selected_dir_name=raw_selected_dir_name,
         raw_directory_cursor=raw_directory_cursor,
         raw_directory_direction=raw_directory_direction,
-        raw_directory_page_size=raw_directory_page_size,
     )
 
     return _render_search_page(
@@ -104,18 +101,16 @@ def directory_page(directory_name: str) -> str:
     raw_query = request.args.get("q", "")
     raw_directory_cursor = request.args.get("dcursor", "")
     raw_directory_direction = request.args.get("ddir", "")
-    raw_directory_page_size = request.args.get("dsize", "")
 
     query = raw_query.strip()
     directory_cursor = raw_directory_cursor.strip() or None
     directory_direction = _normalize_directory_direction(raw_directory_direction)
-    directory_page_size = _parse_directory_page_size(raw_directory_page_size)
+    directory_page_size = DEFAULT_DIRECTORY_PAGE_SIZE
     has_effective_args = _has_effective_search_args(
         raw_query=raw_query,
         raw_selected_dir_name=selected_dir_name,
         raw_directory_cursor=raw_directory_cursor,
         raw_directory_direction=raw_directory_direction,
-        raw_directory_page_size=raw_directory_page_size,
     )
 
     return _render_search_page(
@@ -747,23 +742,11 @@ def _normalize_directory_direction(raw_direction: str) -> str:
     return "next"
 
 
-def _parse_directory_page_size(raw_size: str) -> int:
-    value = raw_size.strip()
-    if not value:
-        return DEFAULT_DIRECTORY_PAGE_SIZE
-    try:
-        size = int(value)
-    except ValueError:
-        return DEFAULT_DIRECTORY_PAGE_SIZE
-    return max(10, min(size, MAX_DIRECTORY_PAGE_SIZE))
-
-
 def _has_effective_search_args(
     raw_query: str,
     raw_selected_dir_name: str,
     raw_directory_cursor: str,
     raw_directory_direction: str,
-    raw_directory_page_size: str,
 ) -> bool:
     if raw_query.strip():
         return True
@@ -775,15 +758,7 @@ def _has_effective_search_args(
     direction = raw_directory_direction.strip().lower()
     if direction in {"next", "prev"}:
         return True
-
-    size_value = raw_directory_page_size.strip()
-    if not size_value:
-        return False
-    try:
-        int(size_value)
-    except ValueError:
-        return False
-    return True
+    return False
 
 
 def _log_view_timing(

@@ -174,8 +174,8 @@
     {% endif %}
 
     {% if directory_has_prev_page or directory_has_next_page %}
-    {% set prev_page_url = url_for('directory_page', directory_name=selected_dir_name, q=query, dcursor=directory_prev_cursor, ddir='prev', dsize=directory_page_size) %}
-    {% set next_page_url = url_for('directory_page', directory_name=selected_dir_name, q=query, dcursor=directory_next_cursor, ddir='next', dsize=directory_page_size) %}
+    {% set prev_page_url = url_for('directory_page', directory_name=selected_dir_name, q=query, dcursor=directory_prev_cursor, ddir='prev') %}
+    {% set next_page_url = url_for('directory_page', directory_name=selected_dir_name, q=query, dcursor=directory_next_cursor, ddir='next') %}
     <div class="meta-row pagination-row" aria-label="Directory files pagination">
       {% if directory_has_prev_page and directory_prev_cursor %}
       <a class="btn" href="{{ prev_page_url }}">Previous</a>
