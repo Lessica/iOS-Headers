@@ -399,6 +399,66 @@ class Repository:
             return 0
         return int(rows[0][0])
 
+    def get_latest_file_in_directory_by_name(
+        self,
+        version_num: int,
+        directory_name: str,
+        file_name: str,
+    ) -> FileRef | None:
+        rows = self._ch.query(
+            """
+            SELECT
+                fi.version_num,
+                dictGet(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(fi.version_num)
+                ) AS version_id,
+                fi.path_id,
+                dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'absolute_path',
+                    toUInt64(fi.path_id)
+                ) AS absolute_path,
+                dictGetOrNull(
+                    'ios_headers.contents_by_content_id_dict',
+                    'pack_length',
+                    toUInt64(fi.content_id)
+                ) AS file_size_bytes
+            FROM file_instances fi
+            WHERE fi.version_num = %(version_num)s
+                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
+                AND dictHas('ios_headers.paths_by_id_dict', toUInt64(fi.path_id))
+                AND dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'dir_name',
+                    toUInt64(fi.path_id)
+                ) = %(directory_name)s
+                AND dictGet(
+                    'ios_headers.paths_by_id_dict',
+                    'file_name',
+                    toUInt64(fi.path_id)
+                ) = %(file_name)s
+            ORDER BY absolute_path ASC
+            LIMIT 1
+            """,
+            {
+                "version_num": version_num,
+                "directory_name": directory_name,
+                "file_name": file_name,
+            },
+        )
+        if not rows:
+            return None
+        row = rows[0]
+        return FileRef(
+            version_num=int(row[0]),
+            version_id=str(row[1]),
+            path_id=int(row[2]),
+            absolute_path=str(row[3]),
+            file_size_bytes=int(row[4]) if row[4] is not None else None,
+        )
+
     def list_files_in_directory_name_page(
         self,
         version_num: int,

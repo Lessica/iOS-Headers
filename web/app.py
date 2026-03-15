@@ -186,6 +186,24 @@ def _render_search_page(
             keyword=query,
         )
 
+        if directory_cursor is None:
+            umbrella_file_name = f"{selected_dir_name}-Umbrella.h"
+            umbrella_file_ref = repo.get_latest_file_in_directory_by_name(
+                version_num=latest_version_num,
+                directory_name=selected_dir_name,
+                file_name=umbrella_file_name,
+            )
+            if umbrella_file_ref is not None:
+                directory_files = [
+                    item for item in directory_files if item.path_id != umbrella_file_ref.path_id
+                ]
+                directory_files.insert(0, umbrella_file_ref)
+
+                if len(directory_files) > directory_page_size:
+                    directory_files.pop()
+                    directory_has_next_page = True
+                    directory_next_cursor = directory_files[-1].absolute_path
+
     owner_path_ids = [path_id for _version_id, _absolute_path, path_id in search_result.owner_hits]
     owner_version_ids_by_path = repo.list_version_ids_for_paths(owner_path_ids)
     owner_entries = [
