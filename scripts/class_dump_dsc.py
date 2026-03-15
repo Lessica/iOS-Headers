@@ -57,6 +57,14 @@ def parse_args() -> argparse.Namespace:
         help="Run class dump for all firmware folders under --firmwares-root",
     )
     parser.add_argument(
+        "--regenerate-umbrella-headers",
+        action="store_true",
+        help=(
+            "Use --regenerate-umbrella-headers instead of --all when running "
+            "ipsw class-dump in cache mode"
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print commands without executing them",
@@ -110,6 +118,9 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
     ipsw_path = str(args.ipsw_path)
     output_root: Path = args.output_root
     cache_relpath: Path = args.cache_relpath
+    class_dump_scope_flag = (
+        "--regenerate-umbrella-headers" if args.regenerate_umbrella_headers else "--all"
+    )
 
     firmware_dirs = resolve_targets(args)
 
@@ -133,7 +144,7 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
         command = [
             ipsw_path,
             "class-dump",
-            "--all",
+            class_dump_scope_flag,
             "--demangle",
             "--deps",
             "--headers",
