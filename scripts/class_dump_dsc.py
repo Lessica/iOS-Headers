@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 import shlex
 import subprocess
@@ -74,10 +75,22 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Continue processing remaining firmwares if a command fails",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Parallel workers for --all cache mode (default: 1)",
+    )
     args = parser.parse_args()
 
     if args.all and args.firmware_name is not None:
         parser.error("Do not provide firmware_name when using --all")
+
+    if args.workers < 1:
+        parser.error("--workers must be >= 1")
+
+    if not args.all and args.workers != 1:
+        parser.error("--workers is only supported with --all")
 
     return args
 
@@ -129,14 +142,11 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
     skipped = 0
     failed = 0
 
-    for firmware_dir in firmware_dirs:
-        total += 1
-
+    def process_firmware(firmware_dir: Path) -> tuple[str, int | None, str]:
         cache_path = firmware_dir / cache_relpath
         if not cache_path.is_file():
-            skipped += 1
             print(f"[SKIP] Missing cache: {cache_path}", file=sys.stderr)
-            continue
+            return "skipped", None, firmware_dir.name
 
         out_dir = output_root / firmware_dir.name / cache_relpath
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -156,20 +166,77 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
 
         print(f"[RUN ] {quote_command(command)}")
         if args.dry_run:
-            succeeded += 1
-            continue
+            return "succeeded", None, firmware_dir.name
 
         result = run_command(command)
         if result.returncode == 0:
-            succeeded += 1
-        else:
-            failed += 1
-            print(
-                f"[FAIL] Firmware {firmware_dir.name} exited with code {result.returncode}",
-                file=sys.stderr,
-            )
-            if not args.continue_on_error:
-                raise SystemExit(result.returncode)
+            return "succeeded", None, firmware_dir.name
+        return "failed", result.returncode, firmware_dir.name
+
+    if args.all and args.workers > 1:
+        total = len(firmware_dirs)
+        pending_dirs = iter(firmware_dirs)
+        in_flight: dict[Future[tuple[str, int | None, str]], Path] = {}
+
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            for _ in range(min(args.workers, total)):
+                firmware_dir = next(pending_dirs, None)
+                if firmware_dir is None:
+                    break
+                future = executor.submit(process_firmware, firmware_dir)
+                in_flight[future] = firmware_dir
+
+            stop_on_failure = False
+            failure_code = 1
+
+            while in_flight:
+                done, _ = wait(set(in_flight.keys()), return_when=FIRST_COMPLETED)
+                for future in done:
+                    in_flight.pop(future, None)
+                    status, returncode, firmware_name = future.result()
+
+                    if status == "succeeded":
+                        succeeded += 1
+                    elif status == "skipped":
+                        skipped += 1
+                    else:
+                        failed += 1
+                        print(
+                            f"[FAIL] Firmware {firmware_name} exited with code {returncode}",
+                            file=sys.stderr,
+                        )
+                        if not args.continue_on_error:
+                            stop_on_failure = True
+                            failure_code = returncode if returncode is not None else 1
+
+                    if stop_on_failure:
+                        break
+
+                    firmware_dir = next(pending_dirs, None)
+                    if firmware_dir is not None:
+                        new_future = executor.submit(process_firmware, firmware_dir)
+                        in_flight[new_future] = firmware_dir
+
+                if stop_on_failure:
+                    for future in in_flight:
+                        future.cancel()
+                    raise SystemExit(failure_code)
+    else:
+        for firmware_dir in firmware_dirs:
+            total += 1
+            status, returncode, firmware_name = process_firmware(firmware_dir)
+            if status == "succeeded":
+                succeeded += 1
+            elif status == "skipped":
+                skipped += 1
+            else:
+                failed += 1
+                print(
+                    f"[FAIL] Firmware {firmware_name} exited with code {returncode}",
+                    file=sys.stderr,
+                )
+                if not args.continue_on_error:
+                    raise SystemExit(returncode if returncode is not None else 1)
 
     return total, succeeded, skipped, failed
 
