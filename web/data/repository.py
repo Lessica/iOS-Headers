@@ -399,12 +399,18 @@ class Repository:
             return 0
         return int(rows[0][0])
 
-    def get_latest_file_in_directory_by_name(
+    def get_latest_file_in_directory_by_preferred_names(
         self,
         version_num: int,
         directory_name: str,
-        file_name: str,
+        primary_file_name: str,
+        fallback_file_name: str | None = None,
     ) -> FileRef | None:
+        preferred_file_names_lc = [primary_file_name.strip().lower()]
+        fallback_file_name_lc = (fallback_file_name or "").strip().lower()
+        if fallback_file_name_lc and fallback_file_name_lc not in preferred_file_names_lc:
+            preferred_file_names_lc.append(fallback_file_name_lc)
+
         rows = self._ch.query(
             """
             SELECT
@@ -436,16 +442,34 @@ class Repository:
                 ) = %(directory_name)s
                 AND dictGet(
                     'ios_headers.paths_by_id_dict',
-                    'file_name',
+                    'file_name_lc',
                     toUInt64(fi.path_id)
-                ) = %(file_name)s
-            ORDER BY absolute_path ASC
+                ) IN %(preferred_file_names_lc)s
+            ORDER BY
+                multiIf(
+                    dictGet(
+                        'ios_headers.paths_by_id_dict',
+                        'file_name_lc',
+                        toUInt64(fi.path_id)
+                    ) = %(primary_file_name_lc)s,
+                    0,
+                    dictGet(
+                        'ios_headers.paths_by_id_dict',
+                        'file_name_lc',
+                        toUInt64(fi.path_id)
+                    ) = %(fallback_file_name_lc)s,
+                    1,
+                    2
+                ) ASC,
+                absolute_path ASC
             LIMIT 1
             """,
             {
                 "version_num": version_num,
                 "directory_name": directory_name,
-                "file_name": file_name,
+                "preferred_file_names_lc": preferred_file_names_lc,
+                "primary_file_name_lc": preferred_file_names_lc[0],
+                "fallback_file_name_lc": fallback_file_name_lc,
             },
         )
         if not rows:

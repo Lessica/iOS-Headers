@@ -188,10 +188,12 @@ def _render_search_page(
 
         if directory_cursor is None:
             umbrella_file_name = f"{selected_dir_name}-Umbrella.h"
-            umbrella_file_ref = repo.get_latest_file_in_directory_by_name(
+            fallback_file_name = f"{selected_dir_name}.h"
+            umbrella_file_ref = repo.get_latest_file_in_directory_by_preferred_names(
                 version_num=latest_version_num,
                 directory_name=selected_dir_name,
-                file_name=umbrella_file_name,
+                primary_file_name=umbrella_file_name,
+                fallback_file_name=fallback_file_name,
             )
             if umbrella_file_ref is not None:
                 directory_files = [
