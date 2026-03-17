@@ -164,7 +164,7 @@ def _render_search_page(
     directory_has_prev_page = False
     directory_next_cursor: str | None = None
     directory_prev_cursor: str | None = None
-    if selected_dir_name and latest_version_num is not None:
+    if selected_dir_name:
         directory_total_count = repo.count_distinct_directories()
         owner_total_count = repo.count_distinct_owners()
         directory_total_unique_paths_count = repo.count_unique_paths_in_directory_name(
@@ -178,7 +178,6 @@ def _render_search_page(
             directory_prev_cursor,
             directory_next_cursor,
         ) = repo.list_files_in_directory_name_page(
-            version_num=latest_version_num,
             directory_name=selected_dir_name,
             page_size=directory_page_size,
             cursor=directory_cursor,
@@ -189,11 +188,9 @@ def _render_search_page(
         if directory_cursor is None:
             umbrella_file_name = f"{selected_dir_name}-Umbrella.h"
             fallback_file_name = f"{selected_dir_name}.h"
-            umbrella_file_ref = repo.get_latest_file_in_directory_by_preferred_names(
-                version_num=latest_version_num,
+            umbrella_file_ref = repo.get_file_in_directory_by_preferred_names(
                 directory_name=selected_dir_name,
-                primary_file_name=umbrella_file_name,
-                fallback_file_name=fallback_file_name,
+                preferred_names=[umbrella_file_name, fallback_file_name],
             )
             if umbrella_file_ref is not None:
                 directory_files = [
