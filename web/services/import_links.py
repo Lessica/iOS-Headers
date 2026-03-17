@@ -15,20 +15,6 @@ class RenderedHeader:
     line_count: int
 
 
-def extract_import_basenames(source_text: str) -> set[str]:
-    basenames: set[str] = set()
-    for raw_line in source_text.splitlines():
-        match = IMPORT_PATTERN.match(raw_line)
-        if not match:
-            continue
-        _prefix, token, _suffix = match.groups()
-        token_basename = os.path.basename(token.strip()).strip()
-        if not token_basename:
-            continue
-        basenames.add(token_basename.lower())
-    return basenames
-
-
 def _build_view_link(version_id: str, absolute_path: str) -> str:
     encoded_version = quote(version_id.replace("_", "__").replace("|", "_"), safe="")
     normalized = absolute_path.lstrip("/")
@@ -40,7 +26,6 @@ def render_header_with_import_links(
     source_text: str,
     version_id: str,
     current_absolute_path: str,
-    directory_files: set[str],
 ) -> RenderedHeader:
     directory = os.path.dirname(current_absolute_path)
     lines = source_text.splitlines()
@@ -56,13 +41,9 @@ def render_header_with_import_links(
         token_basename = os.path.basename(token.strip())
         target_path = f"{directory}/{token_basename}" if directory else f"/{token_basename}"
 
-        if target_path in directory_files:
-            href = _build_view_link(version_id=version_id, absolute_path=target_path)
-            linked_token = f'<a href="{escape(href)}">{escape(token)}</a>'
-            rendered_lines.append(f"{escape(prefix)}{linked_token}{escape(suffix)}")
-            continue
-
-        rendered_lines.append(escape(raw_line))
+        href = _build_view_link(version_id=version_id, absolute_path=target_path)
+        linked_token = f'<a href="{escape(href)}">{escape(token)}</a>'
+        rendered_lines.append(f"{escape(prefix)}{linked_token}{escape(suffix)}")
 
     html = "\n".join(rendered_lines)
     return RenderedHeader(html=html, line_count=len(lines))
