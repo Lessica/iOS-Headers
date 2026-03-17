@@ -21,6 +21,9 @@ class Settings:
     minio_secure: bool
     view_cache_ttl_seconds: int
     search_cache_ttl_seconds: int
+    search_query_cache_max_ttl_seconds: int
+    version_cache_ttl_seconds: int
+    stats_cache_ttl_seconds: int
     enable_redis_page_cache: bool
     show_query_elapsed_ms: bool
     enable_ch_query_debug: bool
@@ -54,8 +57,11 @@ def load_settings() -> Settings:
         minio_secret_key=os.getenv("MINIO_ROOT_PASSWORD", "minioadmin"),
         minio_bucket=os.getenv("MINIO_BUCKET", "ios-headers"),
         minio_secure=_as_bool(os.getenv("MINIO_SECURE"), False),
-        view_cache_ttl_seconds=int(os.getenv("VIEW_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 30))),
-        search_cache_ttl_seconds=int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "300")),
+        view_cache_ttl_seconds=int(os.getenv("VIEW_CACHE_TTL", str(60 * 60 * 24 * 30))),
+        search_cache_ttl_seconds=int(os.getenv("SEARCH_CACHE_TTL", "300")),
+        search_query_cache_max_ttl_seconds=int(os.getenv("SEARCH_QUERY_CACHE_MAX_TTL", "60")),
+        version_cache_ttl_seconds=int(os.getenv("VERSION_CACHE_TTL", str(60 * 60 * 24))),
+        stats_cache_ttl_seconds=int(os.getenv("STATS_CACHE_TTL", str(60 * 10))),
         enable_redis_page_cache=_as_bool(os.getenv("ENABLE_REDIS_PAGE_CACHE"), False),
         show_query_elapsed_ms=_as_bool(os.getenv("SHOW_QUERY_ELAPSED_MS"), False),
         enable_ch_query_debug=_as_bool(os.getenv("ENABLE_CH_QUERY_DEBUG"), False),

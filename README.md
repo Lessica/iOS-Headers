@@ -114,6 +114,15 @@
 - Redis：`127.0.0.1:16379`
 - Web（Nginx）：`127.0.0.1:18080`
 
+## Redis 运行策略（缓存优先）
+
+- 默认以缓存模式运行：
+  - `REDIS_APPENDONLY=no`
+  - `REDIS_MAXMEMORY=512mb`
+  - `REDIS_MAXMEMORY_POLICY=allkeys-lru`
+- 含义：优先保障读写延迟与命中率，内存达到上限后按 LRU 淘汰旧 key。
+- 如需恢复持久化（更高数据保留）：将 `REDIS_APPENDONLY` 改为 `yes` 后重启 Redis 服务。
+
 ## 内网穿透（FRP）
 
 本项目已在 Compose 中提供可选 `frpc` 容器（profile: `tunnel`），用于把本机 `nginx:80` 通过公网服务器暴露出去。
@@ -197,8 +206,15 @@ webServer.password = "replace-with-strong-password"
 ### 缓存与伪静态
 
 - 查看页按需渲染并将最终 HTML 写入 Redis 缓存
-- 搜索页按查询参数缓存 SSR HTML
+- 搜索页按规范化查询参数缓存 SSR HTML（包含 `q/dir/dcursor/ddir` 组合）
+- 搜索请求带 `q` 时会使用更短缓存窗口（当前上限 60s）以降低结果陈旧风险
 - 可通过 `.env` 控制页面缓存开关：`ENABLE_REDIS_PAGE_CACHE=true|false`
+- 可通过 `.env` 统一控制缓存 TTL：
+  - `VIEW_CACHE_TTL`：查看页 HTML 缓存 TTL
+  - `SEARCH_CACHE_TTL`：搜索页缓存 TTL（总上限）
+  - `SEARCH_QUERY_CACHE_MAX_TTL`：带 `q` 搜索的缓存 TTL 上限
+  - `VERSION_CACHE_TTL`：版本映射缓存 TTL
+  - `STATS_CACHE_TTL`：统计类缓存 TTL
 - 可通过 `.env` 控制 Query 耗时显示：`SHOW_QUERY_ELAPSED_MS=true|false`
 - 可通过 `.env` 打开 ClickHouse 查询调试日志（用于线上性能排查）：
   - `ENABLE_CH_QUERY_DEBUG=true|false`：输出 SQL 耗时与返回行数

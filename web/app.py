@@ -34,7 +34,12 @@ app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
 timing_logger = logging.getLogger("gunicorn.error")
 cache = RedisCache(settings)
-repo = Repository(ClickHouseClient(settings), cache=cache)
+repo = Repository(
+    ClickHouseClient(settings),
+    cache=cache,
+    version_cache_ttl_seconds=settings.version_cache_ttl_seconds,
+    stats_cache_ttl_seconds=settings.stats_cache_ttl_seconds,
+)
 store = MinioStore(settings)
 search_service = SearchService(repo)
 app.jinja_env.globals["encode_version_id"] = lambda version_id: _encode_version_id_for_url(version_id)
@@ -124,6 +129,7 @@ def _render_search_page(
     directory_page_size: int = DEFAULT_DIRECTORY_PAGE_SIZE,
     has_effective_args: bool = False,
 ) -> str:
+    query_started_at = time.perf_counter()
     cache_key = _search_cache_key(
         query=query,
         selected_dir=selected_dir_name,
@@ -131,13 +137,19 @@ def _render_search_page(
         directory_direction=directory_direction,
         directory_page_size=directory_page_size,
     )
-    use_redis_cache = settings.enable_redis_page_cache and not has_effective_args
+    use_redis_cache = settings.enable_redis_page_cache
     if use_redis_cache:
         cached_html = cache.get_text(cache_key)
         if cached_html is not None:
+            query_elapsed_ms = int((time.perf_counter() - query_started_at) * 1000)
+            _log_search_timing(
+                query=query,
+                selected_dir_name=selected_dir_name,
+                has_effective_args=has_effective_args,
+                query_elapsed_ms=query_elapsed_ms,
+                cache_hit=True,
+            )
             return cached_html
-
-    query_started_at = time.perf_counter()
 
     should_run_global_search = bool(query and not selected_dir_name)
     if should_run_global_search:
@@ -244,7 +256,18 @@ def _render_search_page(
     )
 
     if use_redis_cache:
-        cache.set_text(cache_key, html, settings.search_cache_ttl_seconds)
+        cache_ttl_seconds = settings.search_cache_ttl_seconds
+        if query:
+            cache_ttl_seconds = min(cache_ttl_seconds, settings.search_query_cache_max_ttl_seconds)
+        cache.set_text(cache_key, html, cache_ttl_seconds)
+
+    _log_search_timing(
+        query=query,
+        selected_dir_name=selected_dir_name,
+        has_effective_args=has_effective_args,
+        query_elapsed_ms=query_elapsed_ms,
+        cache_hit=False,
+    )
     return html
 
 
@@ -762,6 +785,23 @@ def _log_view_timing(
         total_ms,
         str(cache_hit).lower(),
         segments,
+    )
+
+
+def _log_search_timing(
+    query: str,
+    selected_dir_name: str,
+    has_effective_args: bool,
+    query_elapsed_ms: int,
+    cache_hit: bool,
+) -> None:
+    timing_logger.info(
+        "search_timing query=%s selected_dir=%s has_effective_args=%s total=%dms cache_hit=%s",
+        query,
+        selected_dir_name,
+        str(has_effective_args).lower(),
+        query_elapsed_ms,
+        str(cache_hit).lower(),
     )
 
 

@@ -105,7 +105,16 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_redis
     ports:
       - "${REDIS_PORT:-16379}:6379"
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "${REDIS_APPENDONLY:-no}",
+        "--maxmemory",
+        "${REDIS_MAXMEMORY:-512mb}",
+        "--maxmemory-policy",
+        "${REDIS_MAXMEMORY_POLICY:-allkeys-lru}",
+      ]
     volumes:
       - ${STACK_DATA_DIR:-./data}/redis:/data
     healthcheck:

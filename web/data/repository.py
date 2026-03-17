@@ -28,13 +28,19 @@ class FileContentRef:
 
 
 class Repository:
-    def __init__(self, ch: ClickHouseClient, cache: RedisCache | None = None) -> None:
+    def __init__(
+        self,
+        ch: ClickHouseClient,
+        cache: RedisCache | None = None,
+        version_cache_ttl_seconds: int,
+        stats_cache_ttl_seconds: int,
+    ) -> None:
         self._ch = ch
         self._cache = cache
         self._version_num_by_id_lc: dict[str, int] = {}
         self._version_id_by_num: dict[int, str] = {}
-        self._version_cache_ttl_seconds = 60 * 60 * 24
-        self._stats_cache_ttl_seconds = 60 * 10
+        self._version_cache_ttl_seconds = version_cache_ttl_seconds
+        self._stats_cache_ttl_seconds = stats_cache_ttl_seconds
 
     def _latest_instance_info_by_path_ids(
         self,
