@@ -667,26 +667,42 @@ class Repository:
         if not normalized_file_names:
             return set()
 
-        rows = self._ch.query(
+        candidate_rows = self._ch.query(
             """
-            WITH target_paths AS (
-                SELECT
-                    path_id,
-                    absolute_path
-                FROM paths
-                WHERE dir_path = %(directory)s
-                    AND file_name_lc IN %(file_names_lc)s
-            )
-            SELECT tp.absolute_path AS absolute_path
-            FROM file_instances fi
-            INNER JOIN target_paths tp ON tp.path_id = fi.path_id
-            WHERE fi.version_num = %(version_num)s
-            GROUP BY absolute_path
+            SELECT
+                path_id,
+                absolute_path
+            FROM paths
+            WHERE dir_path = %(directory)s
+                AND file_name_lc IN %(file_names_lc)s
             """,
             {
-                "version_num": version_num,
                 "directory": directory,
                 "file_names_lc": normalized_file_names,
             },
         )
-        return {str(row[0]) for row in rows}
+        if not candidate_rows:
+            return set()
+
+        absolute_path_by_path_id = {int(row[0]): str(row[1]) for row in candidate_rows}
+        candidate_path_ids = sorted(absolute_path_by_path_id.keys())
+
+        existing_rows = self._ch.query(
+            """
+            SELECT path_id
+            FROM file_instances
+            WHERE version_num = %(version_num)s
+                AND path_id IN %(path_ids)s
+            GROUP BY path_id
+            """,
+            {
+                "version_num": version_num,
+                "path_ids": candidate_path_ids,
+            },
+        )
+
+        return {
+            absolute_path_by_path_id[int(row[0])]
+            for row in existing_rows
+            if int(row[0]) in absolute_path_by_path_id
+        }
