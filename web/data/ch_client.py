@@ -19,6 +19,14 @@ class ClickHouseClient:
         self._logger = logging.getLogger("gunicorn.error")
         self._explained_query_hashes: set[str] = set()
         self._explain_lock = Lock()
+        if self._settings.enable_ch_query_debug:
+            self._logger.warning(
+                "CH_DEBUG_ENABLED explain=%s match=%s slow_ms=%d explain_once=%s",
+                self._settings.enable_ch_query_explain,
+                self._settings.ch_query_debug_match,
+                self._settings.ch_query_slow_ms,
+                self._settings.ch_query_explain_once,
+            )
 
     def _create_client(self) -> Client:
         return Client(
@@ -85,7 +93,7 @@ class ClickHouseClient:
                 explain_text = "\n".join("\t".join(str(cell) for cell in row) for row in explain_rows)
                 if len(explain_text) > 12000:
                     explain_text = f"{explain_text[:12000]}..."
-                self._logger.info(
+                self._logger.warning(
                     "CH_EXPLAIN mode=%s hash=%s elapsed_ms=%d\n%s",
                     mode,
                     query_hash,
@@ -111,7 +119,7 @@ class ClickHouseClient:
             should_debug_log = self._settings.enable_ch_query_debug and self._match_sql_debug_filter(sql)
             if should_debug_log:
                 query_hash = self._query_hash(sql)
-                self._logger.info(
+                self._logger.warning(
                     "CH_QUERY hash=%s elapsed_ms=%d rows=%d params=%s sql=%s",
                     query_hash,
                     elapsed_ms,
