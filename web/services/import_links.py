@@ -15,6 +15,20 @@ class RenderedHeader:
     line_count: int
 
 
+def extract_import_basenames(source_text: str) -> set[str]:
+    basenames: set[str] = set()
+    for raw_line in source_text.splitlines():
+        match = IMPORT_PATTERN.match(raw_line)
+        if not match:
+            continue
+        _prefix, token, _suffix = match.groups()
+        token_basename = os.path.basename(token.strip()).strip()
+        if not token_basename:
+            continue
+        basenames.add(token_basename.lower())
+    return basenames
+
+
 def _build_view_link(version_id: str, absolute_path: str) -> str:
     encoded_version = quote(version_id.replace("_", "__").replace("|", "_"), safe="")
     normalized = absolute_path.lstrip("/")

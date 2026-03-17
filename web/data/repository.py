@@ -34,6 +34,7 @@ class Repository:
         self._version_num_by_id_lc: dict[str, int] = {}
         self._version_id_by_num: dict[int, str] = {}
         self._version_cache_ttl_seconds = 60 * 60 * 24
+        self._stats_cache_ttl_seconds = 60 * 10
 
     def get_latest_version(self) -> tuple[int, str] | None:
         rows = self._ch.query(
@@ -325,6 +326,12 @@ class Repository:
         return [(str(row[2]), str(row[4]), int(row[3])) for row in rows]
 
     def count_distinct_directories(self) -> int:
+        redis_key = "cache:stats:distinct-directories"
+        if self._cache is not None:
+            redis_value = self._cache.get_text(redis_key)
+            if redis_value is not None:
+                return int(redis_value)
+
         rows = self._ch.query(
             """
             SELECT countDistinct(dir_name)
@@ -333,9 +340,18 @@ class Repository:
         )
         if not rows:
             return 0
-        return int(rows[0][0])
+        result = int(rows[0][0])
+        if self._cache is not None:
+            self._cache.set_text(redis_key, str(result), self._stats_cache_ttl_seconds)
+        return result
 
     def count_distinct_owners(self) -> int:
+        redis_key = "cache:stats:distinct-owners"
+        if self._cache is not None:
+            redis_value = self._cache.get_text(redis_key)
+            if redis_value is not None:
+                return int(redis_value)
+
         rows = self._ch.query(
             """
             SELECT countDistinct(owner_name_lc)
@@ -345,7 +361,10 @@ class Repository:
         )
         if not rows:
             return 0
-        return int(rows[0][0])
+        result = int(rows[0][0])
+        if self._cache is not None:
+            self._cache.set_text(redis_key, str(result), self._stats_cache_ttl_seconds)
+        return result
 
     def list_version_ids_for_paths(self, path_ids: list[int]) -> dict[int, list[str]]:
         if not path_ids:
@@ -390,7 +409,7 @@ class Repository:
             f"""
             SELECT count()
             FROM paths
-            WHERE dir_name = %(directory_name)s
+            WHERE dir_name_lc = lowerUTF8(%(directory_name)s)
                 {keyword_clause}
             """,
             {"directory_name": directory_name, "keyword_lc": keyword_lc},
@@ -638,23 +657,36 @@ class Repository:
             presence[key] = {int(version_num) for version_num in version_nums}
         return presence
 
-    def list_paths_in_directory(self, version_num: int, directory: str) -> set[str]:
+    def list_paths_in_directory(
+        self,
+        version_num: int,
+        directory: str,
+        file_names_lc: set[str] | None = None,
+    ) -> set[str]:
+        normalized_file_names = sorted({name.strip().lower() for name in (file_names_lc or set()) if name.strip()})
+        if not normalized_file_names:
+            return set()
+
         rows = self._ch.query(
             """
-            SELECT dictGet(
-                'ios_headers.paths_by_id_dict',
-                'absolute_path',
-                toUInt64(fi.path_id)
-            ) AS absolute_path
+            WITH target_paths AS (
+                SELECT
+                    path_id,
+                    absolute_path
+                FROM paths
+                WHERE dir_path = %(directory)s
+                    AND file_name_lc IN %(file_names_lc)s
+            )
+            SELECT tp.absolute_path AS absolute_path
             FROM file_instances fi
+            INNER JOIN target_paths tp ON tp.path_id = fi.path_id
             WHERE fi.version_num = %(version_num)s
-                AND dictHas('ios_headers.paths_by_id_dict', toUInt64(fi.path_id))
-                AND dictGet(
-                    'ios_headers.paths_by_id_dict',
-                    'dir_path',
-                    toUInt64(fi.path_id)
-                ) = %(directory)s
+            GROUP BY absolute_path
             """,
-            {"version_num": version_num, "directory": directory},
+            {
+                "version_num": version_num,
+                "directory": directory,
+                "file_names_lc": normalized_file_names,
+            },
         )
         return {str(row[0]) for row in rows}

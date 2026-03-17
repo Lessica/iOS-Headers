@@ -16,7 +16,7 @@ from web.data.cache import RedisCache
 from web.data.ch_client import ClickHouseClient
 from web.data.minio_store import MinioStore
 from web.data.repository import FileContentRef, FileRef, Repository
-from web.services.import_links import render_header_with_import_links
+from web.services.import_links import extract_import_basenames, render_header_with_import_links
 from web.services.search import DIRECTORY_HITS_LIMIT, OWNER_HITS_LIMIT, SearchService
 
 
@@ -401,7 +401,12 @@ def view_header(version_id: str, absolute_path: str) -> str:
 
     segment_started_at = time.perf_counter()
     same_directory = os.path.dirname(content_ref.absolute_path)
-    same_directory_files = repo.list_paths_in_directory(content_ref.version_num, same_directory)
+    import_file_names_lc = extract_import_basenames(source_text)
+    same_directory_files = repo.list_paths_in_directory(
+        content_ref.version_num,
+        same_directory,
+        import_file_names_lc,
+    )
     timings_ms["query_same_directory_paths"] = int((time.perf_counter() - segment_started_at) * 1000)
 
     segment_started_at = time.perf_counter()
