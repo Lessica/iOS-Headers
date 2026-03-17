@@ -578,7 +578,7 @@ class Repository:
         keyword_lc = keyword.strip().lower()
         keyword_clause = (
             """
-                AND positionUTF8(file_name_lc, %(keyword_lc)s) > 0
+            AND positionUTF8(file_name_lc, %(keyword_lc)s) > 0
             """
             if keyword_lc
             else ""
