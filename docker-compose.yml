@@ -4,24 +4,15 @@ services:
       context: .
       dockerfile: Dockerfile.web
     container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_web
+    env_file:
+      - .env
     environment:
       CLICKHOUSE_HOST: clickhouse
       CLICKHOUSE_NATIVE_PORT: 9000
-      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-ios_headers}
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-default}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MINIO_ENDPOINT: minio:9000
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-ios-headers}
       MINIO_SECURE: "false"
-      VIEW_CACHE_TTL_SECONDS: ${VIEW_CACHE_TTL_SECONDS:-2592000}
-      SEARCH_CACHE_TTL_SECONDS: ${SEARCH_CACHE_TTL_SECONDS:-300}
-      ENABLE_REDIS_PAGE_CACHE: ${ENABLE_REDIS_PAGE_CACHE:-false}
-      ENABLE_SYMBOL_MATRIX: ${ENABLE_SYMBOL_MATRIX:-false}
-      SHOW_QUERY_ELAPSED_MS: ${SHOW_QUERY_ELAPSED_MS:-false}
     depends_on:
       clickhouse:
         condition: service_healthy
