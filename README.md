@@ -88,7 +88,7 @@
 
 - `data/import_state_v2_no_dedup.json`
 
-## 构建符号可用性表
+## 构建符号索引表
 
 说明：
 - `symbol_presence` 使用 `version_bitmap UInt64` 存储版本可用性位图（按 `version_num` 映射位位置）。
@@ -192,7 +192,6 @@ webServer.password = "replace-with-strong-password"
 - `latest` 伪静态路径会自动解析到该文件的最新可用版本
 - URL 中的 `version_id` 使用 `_` 表示原始 `|`（例如 `15.2_19C56` 对应 `15.2|19C56`）
 - 支持同一路径的跨版本切换
-- 显示符号在各版本上的可用性（YES/NO）
 - `#import/#include` 仅按同目录文件生成内部超链接
 
 ### 缓存与伪静态
@@ -200,7 +199,6 @@ webServer.password = "replace-with-strong-password"
 - 查看页按需渲染并将最终 HTML 写入 Redis 缓存
 - 搜索页按查询参数缓存 SSR HTML
 - 可通过 `.env` 控制页面缓存开关：`ENABLE_REDIS_PAGE_CACHE=true|false`
-- 可通过 `.env` 控制 Symbol Matrix 开关：`ENABLE_SYMBOL_MATRIX=true|false`
 - 可通过 `.env` 控制 Query 耗时显示：`SHOW_QUERY_ELAPSED_MS=true|false`
 - 可通过 `.env` 打开 ClickHouse 查询调试日志（用于线上性能排查）：
   - `ENABLE_CH_QUERY_DEBUG=true|false`：输出 SQL 耗时与返回行数

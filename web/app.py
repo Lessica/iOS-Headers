@@ -26,7 +26,6 @@ class ViewModel:
     source_text: str
     rendered_source_html: str
     versions: list[tuple[int, str]]
-    availability_rows: list[dict[str, Any]]
     source_line_availability: dict[int, list[str]]
 
 
@@ -42,12 +41,6 @@ app.jinja_env.globals["encode_version_id"] = lambda version_id: _encode_version_
 app.jinja_env.globals["format_version_id"] = lambda version_id: _format_version_id_for_display(version_id, separator=" · ")
 OWNER_VERSIONS_PILL_LIMIT = 15
 DEFAULT_DIRECTORY_PAGE_SIZE = 50
-SYMBOL_TYPE_PRIORITY = {
-    "ivar": 0,
-    "property": 1,
-    "class method": 2,
-    "instance method": 3,
-}
 SOURCE_HOVER_SYMBOL_TYPES = {
     "ivar",
     "property",
@@ -361,7 +354,6 @@ def view_header(version_id: str, absolute_path: str) -> str:
     cache_key = _view_cache_key(
         version_num=content_ref.version_num,
         path_id=content_ref.path_id,
-        enable_symbol_matrix=settings.enable_symbol_matrix,
     )
     if settings.enable_redis_page_cache:
         segment_started_at = time.perf_counter()
@@ -439,8 +431,6 @@ def view_header(version_id: str, absolute_path: str) -> str:
         line_count=len(model.source_text.splitlines()),
         file_size_text=_format_bytes_for_display(model.ref.pack_length),
         compare_to_version_id=compare_to_version_id,
-        enable_symbol_matrix=settings.enable_symbol_matrix,
-        availability_rows=model.availability_rows,
         source_line_availability=model.source_line_availability,
         query_elapsed_ms=query_elapsed_ms,
         show_query_elapsed_ms=settings.show_query_elapsed_ms,
@@ -476,44 +466,20 @@ def _build_view_model(
     presence_map: dict[tuple[str, str, str], set[int]],
     same_directory_files: set[str],
 ) -> ViewModel:
-    version_by_num = {version_num: version_id for version_num, version_id in versions}
     version_label_by_num = {version_num: _version_label_for_display(version_id) for version_num, version_id in versions}
-
-    availability_rows: list[dict[str, Any]] = []
     line_to_version_nums: dict[int, set[int]] = {}
 
     for owner_name, symbol_type, symbol_key, line_no in symbols:
-        key = (owner_name, symbol_type, symbol_key)
-        existing_versions = presence_map.get(key, set())
-        states = [
-            {
-                "version_num": version_num,
-                "version_id": version_by_num.get(version_num, str(version_num)),
-                "exists": version_num in existing_versions,
-            }
-            for version_num, _ in versions
-        ]
-        availability_rows.append(
-            {
-                "owner_name": owner_name,
-                "symbol_type": symbol_type,
-                "symbol_key": symbol_key,
-                "states": states,
-            }
-        )
-
+        if line_no <= 0:
+            continue
         normalized_symbol_type = symbol_type.strip().lower()
-        if line_no > 0 and normalized_symbol_type in SOURCE_HOVER_SYMBOL_TYPES and existing_versions:
-            bucket = line_to_version_nums.setdefault(line_no, set())
-            bucket.update(existing_versions)
-
-    availability_rows.sort(
-        key=lambda row: (
-            SYMBOL_TYPE_PRIORITY.get(str(row.get("symbol_type", "")).strip().lower(), len(SYMBOL_TYPE_PRIORITY)),
-            str(row.get("owner_name", "")).lower(),
-            str(row.get("symbol_key", "")).lower(),
-        )
-    )
+        if normalized_symbol_type not in SOURCE_HOVER_SYMBOL_TYPES:
+            continue
+        existing_versions = presence_map.get((owner_name, symbol_type, symbol_key), set())
+        if not existing_versions:
+            continue
+        bucket = line_to_version_nums.setdefault(line_no, set())
+        bucket.update(existing_versions)
 
     rendered = render_header_with_import_links(
         source_text=source_text,
@@ -539,7 +505,6 @@ def _build_view_model(
         source_text=source_text,
         rendered_source_html=rendered.html,
         versions=versions,
-        availability_rows=availability_rows,
         source_line_availability=source_line_availability,
     )
 
@@ -737,9 +702,8 @@ def _build_unified_diff_text(
     return "\n".join(diff_lines)
 
 
-def _view_cache_key(version_num: int, path_id: int, enable_symbol_matrix: bool) -> str:
-    matrix_flag = "1" if enable_symbol_matrix else "0"
-    return f"html:view:vnum:{version_num}:pid:{path_id}:sm:{matrix_flag}"
+def _view_cache_key(version_num: int, path_id: int) -> str:
+    return f"html:view:vnum:{version_num}:pid:{path_id}"
 
 
 def _search_cache_key(

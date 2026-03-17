@@ -59,12 +59,6 @@
     <div class="code-block"><code id="source-code" class="language-objectivec" data-file-name="{{ file_name }}">{{ rendered_source_html|safe }}</code></div>
   </div>
 
-  {% if enable_symbol_matrix %}
-  <details class="panel stack-3 matrix-collapsible">
-    <summary class="title-lg matrix-summary">Symbol Matrix</summary>
-    {% include "_partials/availability_table.html" %}
-  </details>
-  {% endif %}
 </div>
 <script id="source-line-availability" type="application/json">{{ source_line_availability | tojson }}</script>
 <script>
@@ -243,6 +237,7 @@
       const fragment = highlightText(node.nodeValue);
       node.parentNode.replaceChild(fragment, node);
     }
+
     const lineAvailabilityPayload = document.getElementById('source-line-availability');
     const lineAvailability = lineAvailabilityPayload ? JSON.parse(lineAvailabilityPayload.textContent || '{}') : {};
     if (!lineAvailability || Object.keys(lineAvailability).length === 0) {
@@ -399,6 +394,9 @@
       }
 
       const lineKey = String(lineNumber);
+      if (activeLineKey && activeLineKey !== lineKey) {
+        hideTooltip();
+      }
       if (shownPointer) {
         const movedX = Math.abs(event.clientX - shownPointer.clientX);
         const movedY = Math.abs(event.clientY - shownPointer.clientY);
