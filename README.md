@@ -202,6 +202,13 @@ webServer.password = "replace-with-strong-password"
 - 可通过 `.env` 控制页面缓存开关：`ENABLE_REDIS_PAGE_CACHE=true|false`
 - 可通过 `.env` 控制 Symbol Matrix 开关：`ENABLE_SYMBOL_MATRIX=true|false`
 - 可通过 `.env` 控制 Query 耗时显示：`SHOW_QUERY_ELAPSED_MS=true|false`
+- 可通过 `.env` 打开 ClickHouse 查询调试日志（用于线上性能排查）：
+  - `ENABLE_CH_QUERY_DEBUG=true|false`：输出 SQL 耗时与返回行数
+  - `ENABLE_CH_QUERY_EXPLAIN=true|false`：额外输出 `EXPLAIN PLAN / indexes=1 / PIPELINE / ESTIMATE`
+  - `CH_QUERY_DEBUG_MATCH=<substring>`：仅记录包含该子串的 SQL（建议设为方法相关关键词）
+  - `CH_QUERY_EXPLAIN_ONCE=true|false`：同一 SQL 指纹仅输出一次 EXPLAIN（默认 true）
+  - `CH_QUERY_SLOW_MS=<int>`：慢查询阈值（毫秒，默认 200）
+  - `CH_QUERY_PREVIEW_CHARS=<int>`：日志中 SQL 预览最大长度（默认 400）
 - 全站为纯 SSR，不依赖任何前端 JavaScript
 
 ## 关键文件

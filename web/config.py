@@ -24,6 +24,12 @@ class Settings:
     enable_redis_page_cache: bool
     enable_symbol_matrix: bool
     show_query_elapsed_ms: bool
+    enable_ch_query_debug: bool
+    enable_ch_query_explain: bool
+    ch_query_debug_match: str
+    ch_query_explain_once: bool
+    ch_query_slow_ms: int
+    ch_query_preview_chars: int
 
 
 
@@ -54,4 +60,10 @@ def load_settings() -> Settings:
         enable_redis_page_cache=_as_bool(os.getenv("ENABLE_REDIS_PAGE_CACHE"), False),
         enable_symbol_matrix=_as_bool(os.getenv("ENABLE_SYMBOL_MATRIX"), False),
         show_query_elapsed_ms=_as_bool(os.getenv("SHOW_QUERY_ELAPSED_MS"), False),
+        enable_ch_query_debug=_as_bool(os.getenv("ENABLE_CH_QUERY_DEBUG"), False),
+        enable_ch_query_explain=_as_bool(os.getenv("ENABLE_CH_QUERY_EXPLAIN"), False),
+        ch_query_debug_match=os.getenv("CH_QUERY_DEBUG_MATCH", "").strip(),
+        ch_query_explain_once=_as_bool(os.getenv("CH_QUERY_EXPLAIN_ONCE"), True),
+        ch_query_slow_ms=int(os.getenv("CH_QUERY_SLOW_MS", "200")),
+        ch_query_preview_chars=int(os.getenv("CH_QUERY_PREVIEW_CHARS", "400")),
     )
