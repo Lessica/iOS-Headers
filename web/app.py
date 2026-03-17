@@ -90,7 +90,7 @@ def search_page() -> str:
     )
 
 
-@app.get("/d/<path:directory_name>")
+@app.get("/tree/<path:directory_name>")
 def directory_page(directory_name: str) -> str:
     selected_dir_name = unquote(directory_name).strip()
     if not selected_dir_name:
@@ -271,7 +271,7 @@ def _render_search_page(
     return html
 
 
-@app.get("/v/latest/<path:absolute_path>")
+@app.get("/view/latest/<path:absolute_path>")
 def view_latest_header(absolute_path: str) -> Any:
     normalized_path = _normalize_absolute_path(absolute_path)
     if not normalized_path:
@@ -290,7 +290,7 @@ def view_latest_header(absolute_path: str) -> Any:
     )
 
 
-@app.get("/v/<from_version_id>...<to_version_id>/<path:absolute_path>")
+@app.get("/diff/<from_version_id>...<to_version_id>/<path:absolute_path>")
 def view_header_diff(from_version_id: str, to_version_id: str, absolute_path: str) -> str:
     query_started_at = time.perf_counter()
 
@@ -350,7 +350,7 @@ def view_header_diff(from_version_id: str, to_version_id: str, absolute_path: st
     )
 
 
-@app.get("/v/<version_id>/<path:absolute_path>")
+@app.get("/view/<version_id>/<path:absolute_path>")
 def view_header(version_id: str, absolute_path: str) -> str:
     query_started_at = time.perf_counter()
     segment_started_at = query_started_at

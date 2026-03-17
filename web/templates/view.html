@@ -219,7 +219,7 @@
         if (!parent) {
           return NodeFilter.FILTER_REJECT;
         }
-        if (parent.closest('a[href^="/v/"]')) {
+        if (parent.closest('a[href^="/view/"]')) {
           return NodeFilter.FILTER_REJECT;
         }
         if (parent.closest('.token')) {
