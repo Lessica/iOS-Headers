@@ -36,6 +36,54 @@ class Repository:
         self._version_cache_ttl_seconds = 60 * 60 * 24
         self._stats_cache_ttl_seconds = 60 * 10
 
+    def _latest_instance_info_by_path_ids(
+        self,
+        path_ids: list[int],
+    ) -> dict[int, tuple[int, str, int | None]]:
+        if not path_ids:
+            return {}
+
+        unique_path_ids = sorted(set(path_ids))
+        rows = self._ch.query(
+            """
+            SELECT
+                latest.path_id,
+                latest.latest_version_num,
+                dictGetOrNull(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(latest.latest_version_num)
+                ) AS version_id,
+                dictGetOrNull(
+                    'ios_headers.contents_by_content_id_dict',
+                    'pack_length',
+                    toUInt64(latest.latest_content_id)
+                ) AS file_size_bytes
+            FROM
+            (
+                SELECT
+                    fi.path_id AS path_id,
+                    argMax(fi.version_num, tuple(fi.version_num, fi.updated_at)) AS latest_version_num,
+                    argMax(fi.content_id, tuple(fi.version_num, fi.updated_at)) AS latest_content_id
+                FROM file_instances fi
+                WHERE fi.path_id IN %(path_ids)s
+                    AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
+                GROUP BY fi.path_id
+            ) AS latest
+            WHERE version_id IS NOT NULL
+            """,
+            {"path_ids": unique_path_ids},
+        )
+
+        latest_info: dict[int, tuple[int, str, int | None]] = {}
+        for path_id, version_num, version_id, file_size_bytes in rows:
+            latest_info[int(path_id)] = (
+                int(version_num),
+                str(version_id),
+                int(file_size_bytes) if file_size_bytes is not None else None,
+            )
+        return latest_info
+
     def get_latest_version(self) -> tuple[int, str] | None:
         rows = self._ch.query(
             """
@@ -237,93 +285,125 @@ class Repository:
         return [(str(row[0]), str(row[1])) for row in rows]
 
     def search_owner_candidates(self, keyword: str, limit: int = 50) -> list[tuple[str, str, int]]:
-        rows = self._ch.query(
+        keyword_lc = keyword.strip().lower()
+        if not keyword_lc:
+            return []
+
+        filename_limit = max(limit * 12, 300)
+        filename_rows = self._ch.query(
             """
-            WITH lowerUTF8(%(keyword)s) AS keyword_lc,
-            latest_file_version_by_path AS (
-                SELECT
-                    path_id,
-                    max(version_num) AS latest_version_num
-                FROM file_instances
-                GROUP BY path_id
-            ),
-            filename_candidates AS (
-                SELECT
-                    if(p.file_name_lc = keyword_lc, 0, 10) AS priority_rank,
-                    lv.latest_version_num AS matched_version_num,
-                    p.path_id AS path_id,
-                    p.absolute_path AS absolute_path
-                FROM paths p
-                INNER JOIN latest_file_version_by_path lv ON lv.path_id = p.path_id
-                WHERE p.file_name_lc = keyword_lc
-                   OR positionUTF8(p.file_name_lc, keyword_lc) > 0
-            ),
-            owner_candidates AS (
-                SELECT
-                    min(
-                        multiIf(
-                            sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'interface', 1,
-                            sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'protocol', 2,
-                            sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'category', 3,
-                            sp.owner_name_lc = keyword_lc, 4,
-                            positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'interface', 11,
-                            positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'protocol', 12,
-                            positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'category', 13,
-                            14
-                        )
-                    ) AS priority_rank,
-                    bitmapMax(groupBitmapMergeState(sp.version_bitmap)) AS matched_version_num,
-                    sp.path_id AS path_id,
-                    dictGetOrNull(
-                        'ios_headers.paths_by_id_dict',
-                        'absolute_path',
-                        toUInt64(sp.path_id)
-                    ) AS absolute_path
-                FROM symbol_presence sp
-                WHERE sp.owner_name_lc = keyword_lc
-                   OR positionUTF8(sp.owner_name_lc, keyword_lc) > 0
-                GROUP BY sp.path_id
-                HAVING absolute_path IS NOT NULL
-            ),
-            candidates AS (
-                SELECT * FROM filename_candidates
-                UNION ALL
-                SELECT * FROM owner_candidates
-            )
+            WITH lowerUTF8(%(keyword)s) AS keyword_lc
             SELECT
-                best_priority_rank,
-                max_version_num,
-                max_version_id,
+                if(file_name_lc = keyword_lc, 0, 10) AS priority_rank,
                 path_id,
                 absolute_path
-            FROM
-            (
-                SELECT
-                    c.priority_rank AS best_priority_rank,
-                    c.matched_version_num AS max_version_num,
-                    dictGetOrNull(
-                        'ios_headers.versions_by_num_dict',
-                        'version_id',
-                        toUInt32(c.matched_version_num)
-                    ) AS max_version_id,
-                    c.path_id AS path_id,
-                    c.absolute_path AS absolute_path,
-                    row_number() OVER (
-                        PARTITION BY c.path_id
-                        ORDER BY c.priority_rank ASC, c.matched_version_num DESC, c.absolute_path ASC
-                    ) AS rn
-                FROM
-                    candidates c
-                WHERE c.matched_version_num > 0
-            )
-            WHERE rn = 1
-              AND max_version_id IS NOT NULL
-            ORDER BY best_priority_rank ASC, max_version_num DESC, absolute_path ASC
+            FROM paths
+            WHERE file_name_lc = keyword_lc
+               OR positionUTF8(file_name_lc, keyword_lc) > 0
+            ORDER BY priority_rank ASC, absolute_path ASC
             LIMIT %(limit)s
             """,
-            {"keyword": keyword, "limit": limit},
+            {"keyword": keyword_lc, "limit": filename_limit},
         )
-        return [(str(row[2]), str(row[4]), int(row[3])) for row in rows]
+
+        filename_candidates: dict[int, tuple[int, int, str, str]] = {}
+        filename_path_ids = [int(row[1]) for row in filename_rows]
+        latest_by_filename_path = self._latest_instance_info_by_path_ids(filename_path_ids)
+        for priority_rank, path_id, absolute_path in filename_rows:
+            path_id_int = int(path_id)
+            latest = latest_by_filename_path.get(path_id_int)
+            if latest is None:
+                continue
+            version_num, version_id, _file_size_bytes = latest
+            filename_candidates[path_id_int] = (
+                int(priority_rank),
+                version_num,
+                str(version_id),
+                str(absolute_path),
+            )
+
+        owner_limit = max(limit * 12, 600)
+        owner_rows = self._ch.query(
+            """
+            WITH lowerUTF8(%(keyword)s) AS keyword_lc
+            SELECT
+                min(
+                    multiIf(
+                        sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'interface', 1,
+                        sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'protocol', 2,
+                        sp.owner_name_lc = keyword_lc AND sp.owner_kind = 'category', 3,
+                        sp.owner_name_lc = keyword_lc, 4,
+                        positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'interface', 11,
+                        positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'protocol', 12,
+                        positionUTF8(sp.owner_name_lc, keyword_lc) > 0 AND sp.owner_kind = 'category', 13,
+                        14
+                    )
+                ) AS priority_rank,
+                bitmapMax(groupBitmapMergeState(sp.version_bitmap)) AS matched_version_num,
+                dictGetOrNull(
+                    'ios_headers.versions_by_num_dict',
+                    'version_id',
+                    toUInt32(matched_version_num)
+                ) AS matched_version_id,
+                sp.path_id AS path_id,
+                dictGetOrNull(
+                    'ios_headers.paths_by_id_dict',
+                    'absolute_path',
+                    toUInt64(sp.path_id)
+                ) AS absolute_path
+            FROM symbol_presence sp
+            WHERE sp.owner_name_lc = keyword_lc
+               OR positionUTF8(sp.owner_name_lc, keyword_lc) > 0
+            GROUP BY sp.path_id
+            HAVING absolute_path IS NOT NULL
+                AND matched_version_num > 0
+                AND matched_version_id IS NOT NULL
+            ORDER BY priority_rank ASC, matched_version_num DESC, absolute_path ASC
+            LIMIT %(limit)s
+            """,
+            {"keyword": keyword_lc, "limit": owner_limit},
+        )
+
+        merged_candidates: dict[int, tuple[int, int, str, str]] = dict(filename_candidates)
+        for priority_rank, matched_version_num, matched_version_id, path_id, absolute_path in owner_rows:
+            path_id_int = int(path_id)
+            current = merged_candidates.get(path_id_int)
+            candidate = (
+                int(priority_rank),
+                int(matched_version_num),
+                str(matched_version_id),
+                str(absolute_path),
+            )
+            if current is None:
+                merged_candidates[path_id_int] = candidate
+                continue
+
+            current_priority, current_version_num, _current_version_id, current_absolute_path = current
+            candidate_priority, candidate_version_num, _candidate_version_id, candidate_absolute_path = candidate
+            if (
+                candidate_priority < current_priority
+                or (
+                    candidate_priority == current_priority
+                    and (
+                        candidate_version_num > current_version_num
+                        or (
+                            candidate_version_num == current_version_num
+                            and candidate_absolute_path < current_absolute_path
+                        )
+                    )
+                )
+            ):
+                merged_candidates[path_id_int] = candidate
+
+        ordered = sorted(
+            (
+                (priority_rank, version_num, version_id, path_id, absolute_path)
+                for path_id, (priority_rank, version_num, version_id, absolute_path) in merged_candidates.items()
+            ),
+            key=lambda item: (item[0], -item[1], item[4]),
+        )
+        top_rows = ordered[:limit]
+        return [(version_id, absolute_path, path_id) for _p, _vn, version_id, path_id, absolute_path in top_rows]
 
     def count_distinct_directories(self) -> int:
         redis_key = "cache:stats:distinct-directories"
@@ -432,63 +512,50 @@ class Repository:
         if not preferred_file_names_lc:
             return None
 
-        rows = self._ch.query(
+        preferred_rows = self._ch.query(
             """
-            WITH preferred_paths AS (
-                SELECT
-                    path_id,
-                    absolute_path,
-                    indexOf(%(preferred_file_names_lc)s, file_name_lc) AS preferred_rank
-                FROM paths
-                WHERE dir_name_lc = lowerUTF8(%(directory_name)s)
-                    AND file_name_lc IN %(preferred_file_names_lc)s
-            ),
-            latest_instance_by_path AS (
-                SELECT
-                    fi.path_id,
-                    fi.version_num,
-                    fi.content_id
-                FROM file_instances fi
-                WHERE fi.path_id IN (SELECT path_id FROM preferred_paths)
-                    AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
-                ORDER BY fi.path_id ASC, fi.version_num DESC, fi.updated_at DESC
-                LIMIT 1 BY fi.path_id
-            )
             SELECT
-                li.version_num AS version_num,
-                dictGet(
-                    'ios_headers.versions_by_num_dict',
-                    'version_id',
-                    toUInt32(li.version_num)
-                ) AS version_id,
-                pp.path_id,
-                pp.absolute_path,
-                dictGetOrNull(
-                    'ios_headers.contents_by_content_id_dict',
-                    'pack_length',
-                    toUInt64(li.content_id)
-                ) AS file_size_bytes
-            FROM preferred_paths pp
-            INNER JOIN latest_instance_by_path li ON li.path_id = pp.path_id
-            ORDER BY
-                pp.preferred_rank ASC,
-                pp.absolute_path ASC
-            LIMIT 1
+                path_id,
+                absolute_path,
+                indexOf(%(preferred_file_names_lc)s, file_name_lc) AS preferred_rank
+            FROM paths
+            WHERE dir_name_lc = lowerUTF8(%(directory_name)s)
+                AND file_name_lc IN %(preferred_file_names_lc)s
+            ORDER BY preferred_rank ASC, absolute_path ASC
             """,
             {
                 "directory_name": directory_name,
                 "preferred_file_names_lc": preferred_file_names_lc,
             },
         )
-        if not rows:
+        if not preferred_rows:
             return None
-        row = rows[0]
+
+        preferred_path_ids = [int(row[0]) for row in preferred_rows]
+        latest_by_path = self._latest_instance_info_by_path_ids(preferred_path_ids)
+
+        chosen_row: tuple[int, str, int, int, str, int | None] | None = None
+        for row in preferred_rows:
+            path_id = int(row[0])
+            absolute_path = str(row[1])
+            preferred_rank = int(row[2])
+            latest = latest_by_path.get(path_id)
+            if latest is None:
+                continue
+            version_num, version_id, file_size_bytes = latest
+            chosen_row = (path_id, absolute_path, preferred_rank, version_num, version_id, file_size_bytes)
+            break
+
+        if chosen_row is None:
+            return None
+
+        path_id, absolute_path, _preferred_rank, version_num, version_id, file_size_bytes = chosen_row
         return FileRef(
-            version_num=int(row[0]),
-            version_id=str(row[1]),
-            path_id=int(row[2]),
-            absolute_path=str(row[3]),
-            file_size_bytes=int(row[4]) if row[4] is not None else None,
+            version_num=version_num,
+            version_id=version_id,
+            path_id=path_id,
+            absolute_path=absolute_path,
+            file_size_bytes=file_size_bytes,
         )
 
     def list_files_in_directory_name_page(
@@ -530,47 +597,17 @@ class Repository:
                 else ""
             )
 
-        rows = self._ch.query(
+        paged_path_rows = self._ch.query(
             f"""
-            WITH paged_paths AS (
-                SELECT
-                    path_id,
-                    absolute_path
-                FROM paths
-                WHERE dir_name_lc = lowerUTF8(%(directory_name)s)
-                    {keyword_clause}
-                    {cursor_clause}
-                ORDER BY absolute_path {order_sql}
-                LIMIT %(limit)s
-            ),
-            latest_instance_by_path AS (
-                SELECT
-                    fi.path_id,
-                    fi.version_num,
-                    fi.content_id
-                FROM file_instances fi
-                WHERE fi.path_id IN (SELECT path_id FROM paged_paths)
-                    AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
-                ORDER BY fi.path_id ASC, fi.version_num DESC, fi.updated_at DESC
-                LIMIT 1 BY fi.path_id
-            )
             SELECT
-                li.version_num AS version_num,
-                dictGet(
-                    'ios_headers.versions_by_num_dict',
-                    'version_id',
-                    toUInt32(li.version_num)
-                ) AS version_id,
-                fp.path_id,
-                fp.absolute_path,
-                dictGetOrNull(
-                    'ios_headers.contents_by_content_id_dict',
-                    'pack_length',
-                    toUInt64(li.content_id)
-                ) AS file_size_bytes
-            FROM paged_paths fp
-            INNER JOIN latest_instance_by_path li ON li.path_id = fp.path_id
-            ORDER BY fp.absolute_path {order_sql}
+                path_id,
+                absolute_path
+            FROM paths
+            WHERE dir_name_lc = lowerUTF8(%(directory_name)s)
+                {keyword_clause}
+                {cursor_clause}
+            ORDER BY absolute_path {order_sql}
+            LIMIT %(limit)s
             """,
             {
                 "directory_name": directory_name,
@@ -580,16 +617,24 @@ class Repository:
             },
         )
 
-        files = [
-            FileRef(
-                version_num=int(row[0]),
-                version_id=str(row[1]),
-                path_id=int(row[2]),
-                absolute_path=str(row[3]),
-                file_size_bytes=int(row[4]) if row[4] is not None else None,
+        paged_paths = [(int(row[0]), str(row[1])) for row in paged_path_rows]
+        latest_by_path = self._latest_instance_info_by_path_ids([path_id for path_id, _absolute_path in paged_paths])
+
+        files: list[FileRef] = []
+        for path_id, absolute_path in paged_paths:
+            latest = latest_by_path.get(path_id)
+            if latest is None:
+                continue
+            version_num, version_id, file_size_bytes = latest
+            files.append(
+                FileRef(
+                    version_num=version_num,
+                    version_id=version_id,
+                    path_id=path_id,
+                    absolute_path=absolute_path,
+                    file_size_bytes=file_size_bytes,
+                )
             )
-            for row in rows
-        ]
 
         has_more_in_direction = len(files) > safe_page_size
         if has_more_in_direction:
