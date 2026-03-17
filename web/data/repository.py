@@ -31,9 +31,9 @@ class Repository:
     def __init__(
         self,
         ch: ClickHouseClient,
-        cache: RedisCache | None = None,
         version_cache_ttl_seconds: int,
         stats_cache_ttl_seconds: int,
+        cache: RedisCache | None = None,
     ) -> None:
         self._ch = ch
         self._cache = cache
