@@ -27,7 +27,7 @@ CH_DB="$(read_env CLICKHOUSE_DB ios_headers)"
 CH_USER="$(read_env CLICKHOUSE_USER default)"
 CH_PASS="$(read_env CLICKHOUSE_PASSWORD '')"
 
-PY_SCRIPT="$ROOT_DIR/scripts/build_symbol_presence_v2.py"
+PY_SCRIPT="$ROOT_DIR/scripts/_internal/build_symbol_presence_v2.py"
 PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
 
 if [[ ! -x "$PYTHON_BIN" ]]; then

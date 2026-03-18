@@ -31,7 +31,7 @@ MINIO_USER="$(read_env MINIO_ROOT_USER minioadmin)"
 MINIO_PASS="$(read_env MINIO_ROOT_PASSWORD minioadmin)"
 MINIO_BUCKET="$(read_env MINIO_BUCKET ios-headers)"
 
-PY_SCRIPT="$ROOT_DIR/scripts/import_headers_v2.py"
+PY_SCRIPT="$ROOT_DIR/scripts/_internal/import_headers_v2.py"
 PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
 
 if [[ ! -x "$PYTHON_BIN" ]]; then

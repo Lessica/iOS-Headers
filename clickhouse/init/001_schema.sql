@@ -1,5 +1,7 @@
 CREATE DATABASE IF NOT EXISTS ios_headers;
 
+-- Core dimension tables
+
 CREATE TABLE IF NOT EXISTS ios_headers.versions (
     version_num UInt32,
     version_id String,
@@ -51,8 +53,6 @@ CREATE INDEX IF NOT EXISTS idx_paths_absolute_path_bf ON ios_headers.paths (abso
 TYPE bloom_filter(0.01)
 GRANULARITY 64;
 
-ALTER TABLE ios_headers.paths MATERIALIZE INDEX idx_paths_absolute_path_bf;
-
 CREATE TABLE IF NOT EXISTS ios_headers.contents (
     content_id UInt64,
     content_hash FixedString(32),
@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS ios_headers.contents (
 )
 ENGINE = MergeTree
 ORDER BY (content_id);
+
+-- Fact table
 
 CREATE TABLE IF NOT EXISTS ios_headers.file_instances (
     version_num UInt32,
@@ -83,6 +85,29 @@ ENGINE = MergeTree
 PARTITION BY version_num
 ORDER BY (path_id, version_num)
 SETTINGS index_granularity = 8192;
+
+-- Pre-aggregated path/version map
+
+CREATE TABLE IF NOT EXISTS ios_headers.path_versions (
+    path_id UInt64,
+    version_num UInt32,
+    seen SimpleAggregateFunction(max, UInt8)
+)
+ENGINE = AggregatingMergeTree()
+ORDER BY (path_id, version_num)
+SETTINGS index_granularity = 8192;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS ios_headers.mv_path_versions
+TO ios_headers.path_versions
+AS
+SELECT
+    path_id,
+    version_num,
+    toUInt8(1) AS seen
+FROM ios_headers.file_instances
+GROUP BY path_id, version_num;
+
+-- Symbol metadata
 
 CREATE TABLE IF NOT EXISTS ios_headers.symbols (
     content_id UInt64,
@@ -118,6 +143,8 @@ SETTINGS index_granularity = 8192;
 CREATE INDEX IF NOT EXISTS idx_symbol_presence_owner_name_ngram ON ios_headers.symbol_presence (owner_name_lc)
 TYPE ngrambf_v1(3, 32768, 3, 0)
 GRANULARITY 64;
+
+-- Dictionaries
 
 DROP DICTIONARY IF EXISTS ios_headers.paths_by_absolute_path_dict;
 

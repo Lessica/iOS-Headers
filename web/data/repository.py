@@ -582,17 +582,17 @@ class Repository:
         rows = self._ch.query(
             """
             SELECT
-                fi.version_num,
+                pv.version_num,
                 dictGet(
                     'ios_headers.versions_by_num_dict',
                     'version_id',
-                    toUInt32(fi.version_num)
+                    toUInt32(pv.version_num)
                 ) AS version_id
-            FROM file_instances fi
-            WHERE fi.path_id = %(path_id)s
-                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
-            GROUP BY fi.version_num, version_id
-            ORDER BY fi.version_num DESC
+            FROM path_versions pv
+            WHERE pv.path_id = %(path_id)s
+                AND dictHas('ios_headers.versions_by_num_dict', toUInt32(pv.version_num))
+            GROUP BY pv.version_num, version_id
+            ORDER BY pv.version_num DESC
             """,
             {"path_id": path_id},
         )

@@ -106,6 +106,7 @@
 
 1. `scripts/import_headers_v2.zsh ...`
 2. `scripts/build_symbol_presence_v2.zsh --truncate-first`
+3. `scripts/backfill_path_versions.zsh`
 
 ## 端点
 
