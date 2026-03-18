@@ -42,54 +42,6 @@ class Repository:
         self._version_cache_ttl_seconds = version_cache_ttl_seconds
         self._stats_cache_ttl_seconds = stats_cache_ttl_seconds
 
-    def _latest_instance_info_by_path_ids(
-        self,
-        path_ids: list[int],
-    ) -> dict[int, tuple[int, str, int | None]]:
-        if not path_ids:
-            return {}
-
-        unique_path_ids = sorted(set(path_ids))
-        rows = self._ch.query(
-            """
-            SELECT
-                latest.path_id,
-                latest.latest_version_num,
-                dictGetOrNull(
-                    'ios_headers.versions_by_num_dict',
-                    'version_id',
-                    toUInt32(latest.latest_version_num)
-                ) AS version_id,
-                dictGetOrNull(
-                    'ios_headers.contents_by_content_id_dict',
-                    'pack_length',
-                    toUInt64(latest.latest_content_id)
-                ) AS file_size_bytes
-            FROM
-            (
-                SELECT
-                    fi.path_id AS path_id,
-                    argMax(fi.version_num, tuple(fi.version_num, fi.updated_at)) AS latest_version_num,
-                    argMax(fi.content_id, tuple(fi.version_num, fi.updated_at)) AS latest_content_id
-                FROM file_instances fi
-                WHERE fi.path_id IN %(path_ids)s
-                    AND dictHas('ios_headers.versions_by_num_dict', toUInt32(fi.version_num))
-                GROUP BY fi.path_id
-            ) AS latest
-            WHERE version_id IS NOT NULL
-            """,
-            {"path_ids": unique_path_ids},
-        )
-
-        latest_info: dict[int, tuple[int, str, int | None]] = {}
-        for path_id, version_num, version_id, file_size_bytes in rows:
-            latest_info[int(path_id)] = (
-                int(version_num),
-                str(version_id),
-                int(file_size_bytes) if file_size_bytes is not None else None,
-            )
-        return latest_info
-
     def get_latest_version(self) -> tuple[int, str] | None:
         rows = self._ch.query(
             """
@@ -313,18 +265,12 @@ class Repository:
         )
 
         filename_candidates: dict[int, tuple[int, int, str, str]] = {}
-        filename_path_ids = [int(row[1]) for row in filename_rows]
-        latest_by_filename_path = self._latest_instance_info_by_path_ids(filename_path_ids)
         for priority_rank, path_id, absolute_path in filename_rows:
             path_id_int = int(path_id)
-            latest = latest_by_filename_path.get(path_id_int)
-            if latest is None:
-                continue
-            version_num, version_id, _file_size_bytes = latest
             filename_candidates[path_id_int] = (
                 int(priority_rank),
-                version_num,
-                str(version_id),
+                0,
+                "",
                 str(absolute_path),
             )
 
@@ -537,31 +483,15 @@ class Repository:
         if not preferred_rows:
             return None
 
-        preferred_path_ids = [int(row[0]) for row in preferred_rows]
-        latest_by_path = self._latest_instance_info_by_path_ids(preferred_path_ids)
-
-        chosen_row: tuple[int, str, int, int, str, int | None] | None = None
-        for row in preferred_rows:
-            path_id = int(row[0])
-            absolute_path = str(row[1])
-            preferred_rank = int(row[2])
-            latest = latest_by_path.get(path_id)
-            if latest is None:
-                continue
-            version_num, version_id, file_size_bytes = latest
-            chosen_row = (path_id, absolute_path, preferred_rank, version_num, version_id, file_size_bytes)
-            break
-
-        if chosen_row is None:
-            return None
-
-        path_id, absolute_path, _preferred_rank, version_num, version_id, file_size_bytes = chosen_row
+        row = preferred_rows[0]
+        path_id = int(row[0])
+        absolute_path = str(row[1])
         return FileRef(
-            version_num=version_num,
-            version_id=version_id,
+            version_num=0,
+            version_id="",
             path_id=path_id,
             absolute_path=absolute_path,
-            file_size_bytes=file_size_bytes,
+            file_size_bytes=None,
         )
 
     def list_files_in_directory_name_page(
@@ -623,24 +553,16 @@ class Repository:
             },
         )
 
-        paged_paths = [(int(row[0]), str(row[1])) for row in paged_path_rows]
-        latest_by_path = self._latest_instance_info_by_path_ids([path_id for path_id, _absolute_path in paged_paths])
-
-        files: list[FileRef] = []
-        for path_id, absolute_path in paged_paths:
-            latest = latest_by_path.get(path_id)
-            if latest is None:
-                continue
-            version_num, version_id, file_size_bytes = latest
-            files.append(
-                FileRef(
-                    version_num=version_num,
-                    version_id=version_id,
-                    path_id=path_id,
-                    absolute_path=absolute_path,
-                    file_size_bytes=file_size_bytes,
-                )
+        files = [
+            FileRef(
+                version_num=0,
+                version_id="",
+                path_id=int(row[0]),
+                absolute_path=str(row[1]),
+                file_size_bytes=None,
             )
+            for row in paged_path_rows
+        ]
 
         has_more_in_direction = len(files) > safe_page_size
         if has_more_in_direction:

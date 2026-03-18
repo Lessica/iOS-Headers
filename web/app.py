@@ -573,12 +573,13 @@ def _build_search_file_entry(file_ref: FileRef, version_ids: list[str] | None = 
     segments = [segment for segment in normalized.split("/") if segment]
     path_depth = len(segments)
     all_version_ids = version_ids or []
+    effective_version_id = all_version_ids[0] if all_version_ids else file_ref.version_id
     visible_version_ids = all_version_ids[:OWNER_VERSIONS_PILL_LIMIT]
     remaining_versions_count = max(len(all_version_ids) - len(visible_version_ids), 0)
 
     return {
         "version_num": file_ref.version_num,
-        "version_id": file_ref.version_id,
+        "version_id": effective_version_id,
         "absolute_path": absolute_path,
         "file_name": file_name,
         "parent_name": parent_name,
@@ -595,10 +596,11 @@ def _build_search_file_entry(file_ref: FileRef, version_ids: list[str] | None = 
 def _build_owner_search_entry(version_id: str, absolute_path: str, version_ids: list[str]) -> dict[str, Any]:
     normalized = absolute_path.rstrip("/")
     file_name = os.path.basename(normalized) or absolute_path
+    effective_version_id = version_ids[0] if version_ids else version_id
     visible_version_ids = version_ids[:OWNER_VERSIONS_PILL_LIMIT]
     remaining_versions_count = max(len(version_ids) - len(visible_version_ids), 0)
     return {
-        "version_id": version_id,
+        "version_id": effective_version_id,
         "absolute_path": absolute_path,
         "file_name": file_name,
         "version_ids": visible_version_ids,
