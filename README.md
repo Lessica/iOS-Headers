@@ -187,6 +187,24 @@ webServer.password = "replace-with-strong-password"
 - `FRP_TOKEN` 是否与服务端一致
 - `frpc` 日志是否显示 `start proxy success`
 
+### 4) 作为腾讯云 CDN 回源站（防直连）
+
+目标：`frps` 公网端口仅作为 CDN 源站回源入口，普通用户不能直接访问该端口。
+
+1. 在腾讯云 CDN 回源配置中添加自定义回源请求头：
+  - Header: `X-Origin-Verify`
+  - Value: 与 `.env` 中 `CDN_ORIGIN_VERIFY_SECRET` 完全一致
+2. 将 CDN 回源地址设置为：`http://<公网服务器IP>:<FRP_REMOTE_PORT>`。
+3. `nginx/site.conf` 已启用源站鉴权：
+  - 非本地访问若缺少正确 `X-Origin-Verify`，直接返回 `403`。
+  - 仅 `localhost/127.0.0.1` 可绕过该鉴权，便于本地调试。
+4. 在 `.env` 中设置高强度随机串：
+  - `CDN_ORIGIN_VERIFY_SECRET=<long-random-secret>`
+5. 完成后重载服务：
+  - `scripts/deploy_local_stack.zsh restart`
+
+说明：该模式下，用户应始终通过 CDN 域名访问，不能直接访问 `frps` 公网端口。
+
 ## 首期站点功能（English UI, No JavaScript）
 
 ### 搜索页（`/`）
