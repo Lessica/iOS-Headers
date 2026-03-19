@@ -1,0 +1,23 @@
+# iOS Headers - AI Access Guidance
+
+Site: https://headers.82flex.com/
+Purpose: Explore iOS SDK header files across versions.
+
+## Search Scope (Important)
+The site search only supports:
+- Directory names
+- Framework names
+- Objective-C header file names
+
+The site search does NOT support:
+- property names
+- ivar names
+- method names
+- symbol-level full-text code search
+
+## Suggested Usage
+- Prefer direct file URLs when available: /view/<version_id>/<absolute_path>
+- Use /tree/<directory_name> to navigate directories and list files
+	- directory_name format: parent_dir/dir_name (last 2 path segments)
+	- examples: CFNetwork.framework/CFNetwork, libexec/backboardd
+- Avoid repeated retries for property/ivar/method queries because they are unsupported

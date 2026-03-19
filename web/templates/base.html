@@ -3,6 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ seo_description }}">
+  <meta name="robots" content="{{ seo_robots }}">
+  <link rel="canonical" href="{{ seo_canonical_url }}">
+  <meta property="og:type" content="{{ seo_og_type }}">
+  <meta property="og:title" content="{{ seo_og_title }}">
+  <meta property="og:description" content="{{ seo_og_description }}">
+  <meta property="og:url" content="{{ seo_og_url }}">
+  <meta property="og:site_name" content="iOS Headers">
+  <meta name="twitter:card" content="{{ seo_twitter_card }}">
+  <meta name="twitter:title" content="{{ seo_og_title }}">
+  <meta name="twitter:description" content="{{ seo_og_description }}">
+  <link rel="alternate" hreflang="{{ seo_hreflang }}" href="{{ seo_canonical_url }}">
+  <link rel="alternate" hreflang="x-default" href="{{ seo_canonical_url }}">
   <meta name="google-adsense-account" content="ca-pub-5658277191043916">
   <title>{% block title %}iOS Headers{% endblock %}</title>
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5658277191043916" crossorigin="anonymous"></script>
@@ -1012,6 +1025,10 @@
       }
     }
   </style>
+  {% block head_meta_extra %}{% endblock %}
+  {% for schema in seo_structured_data %}
+  <script type="application/ld+json">{{ schema | tojson }}</script>
+  {% endfor %}
 </head>
 <body>
   <div class="site-shell">

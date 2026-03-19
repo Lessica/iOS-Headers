@@ -1,2 +1,3 @@
 User-agent: *
 Disallow: /diff/
+Sitemap: https://headers.82flex.com/sitemap.xml

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import difflib
+import html
 import hashlib
 import logging
 import os
 import time
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import urlencode, unquote
 
 from flask import Flask, Response, abort, redirect, render_template, request, url_for
 
@@ -46,6 +47,14 @@ app.jinja_env.globals["encode_version_id"] = lambda version_id: _encode_version_
 app.jinja_env.globals["format_version_id"] = lambda version_id: _format_version_id_for_display(version_id, separator=" · ")
 OWNER_VERSIONS_PILL_LIMIT = 15
 DEFAULT_DIRECTORY_PAGE_SIZE = 50
+CANONICAL_SITE_ORIGIN = "https://headers.82flex.com"
+SITEMAP_DIRECTORY_LIMIT = 300
+SITEMAP_CACHE_KEY = "xml:sitemap:v1"
+SITEMAP_CACHE_TTL_SECONDS = 1800
+SEARCH_SCOPE_NOTICE = (
+    "Search supports directory names, framework names, and Objective-C header file names only; "
+    "property, ivar, and method search is unavailable."
+)
 SOURCE_HOVER_SYMBOL_TYPES = {
     "ivar",
     "property",
@@ -59,6 +68,147 @@ SOURCE_HOVER_SYMBOL_TYPES = {
 @app.get("/healthz")
 def healthz() -> Response:
     return Response("ok", mimetype="text/plain")
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml() -> Response:
+    if settings.enable_redis_page_cache:
+        cached_xml = cache.get_text(SITEMAP_CACHE_KEY)
+        if cached_xml is not None:
+            return Response(cached_xml, mimetype="application/xml")
+
+    urls: list[str] = [_canonical_url(url_for("search_page"))]
+    for directory_name, _sample_dir_path in repo.search_directories(prefix="", limit=SITEMAP_DIRECTORY_LIMIT):
+        urls.append(
+            _canonical_url(
+                url_for("directory_page", directory_name=directory_name),
+            )
+        )
+
+    sitemap_xml_text = _build_sitemap_xml(urls)
+    if settings.enable_redis_page_cache:
+        cache.set_text(SITEMAP_CACHE_KEY, sitemap_xml_text, SITEMAP_CACHE_TTL_SECONDS)
+    return Response(sitemap_xml_text, mimetype="application/xml")
+
+
+@app.context_processor
+def inject_seo_metadata() -> dict[str, Any]:
+    endpoint = request.endpoint or ""
+    args = request.args
+    view_args = request.view_args or {}
+
+    query = args.get("q", "").strip()
+    selected_dir_name = ""
+    if endpoint == "directory_page":
+        selected_dir_name = unquote(str(view_args.get("directory_name", ""))).strip()
+
+    has_pagination_cursor = bool(args.get("cursor", "").strip())
+    seo_robots = "index, follow"
+    if endpoint == "view_header_diff":
+        seo_robots = "noindex, nofollow"
+    elif endpoint in {"search_page", "directory_page"} and has_pagination_cursor:
+        seo_robots = "noindex, follow"
+
+    canonical_query: dict[str, str] = {}
+    if query:
+        canonical_query["q"] = query
+
+    if endpoint == "search_page":
+        canonical_path = url_for("search_page")
+    elif endpoint == "directory_page" and selected_dir_name:
+        canonical_path = url_for("directory_page", directory_name=selected_dir_name)
+    else:
+        canonical_path = request.path
+    seo_canonical_url = _canonical_url(canonical_path, canonical_query)
+
+    seo_title = "iOS Headers"
+    seo_description = (
+        "Explore iOS SDK headers across versions with searchable directories and version history. "
+        f"{SEARCH_SCOPE_NOTICE}"
+    )
+    seo_og_type = "website"
+
+    if endpoint == "search_page" and query:
+        seo_title = f"Search: {query} · iOS Headers"
+        seo_description = (
+            f"Search iOS SDK headers for {query} across directories and versions. "
+            f"{SEARCH_SCOPE_NOTICE}"
+        )
+    elif endpoint == "directory_page" and selected_dir_name:
+        seo_title = f"{selected_dir_name} · iOS Headers"
+        seo_description = (
+            f"Browse headers in {selected_dir_name} across indexed iOS SDK versions. "
+            f"{SEARCH_SCOPE_NOTICE}"
+        )
+    elif endpoint == "view_header":
+        absolute_path = _normalize_absolute_path(str(view_args.get("absolute_path", "")))
+        file_name = os.path.basename(absolute_path.rstrip("/")) or absolute_path or "Header"
+        seo_title = f"{file_name} · iOS Headers"
+        seo_description = (
+            f"View {absolute_path} with version history, source lines, and symbol-aware navigation. "
+            f"{SEARCH_SCOPE_NOTICE}"
+        )
+        seo_og_type = "article"
+    elif endpoint == "view_header_diff":
+        absolute_path = _normalize_absolute_path(str(view_args.get("absolute_path", "")))
+        seo_title = f"{absolute_path} · Compare · iOS Headers"
+        seo_description = (
+            f"Compare header changes for {absolute_path} across iOS SDK versions. "
+            f"{SEARCH_SCOPE_NOTICE}"
+        )
+
+    seo_structured_data: list[dict[str, Any]] = [
+        {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "iOS Headers",
+            "url": _canonical_url("/"),
+            "description": SEARCH_SCOPE_NOTICE,
+            "potentialAction": {
+                "@type": "SearchAction",
+                "target": f"{_canonical_url('/')}?q={{search_term_string}}",
+                "query-input": "required name=search_term_string",
+            },
+        }
+    ]
+
+    if endpoint in {"search_page", "directory_page"}:
+        seo_structured_data.append(
+            {
+                "@context": "https://schema.org",
+                "@type": "CollectionPage",
+                "name": seo_title,
+                "url": seo_canonical_url,
+                "description": seo_description,
+            }
+        )
+
+    if endpoint == "view_header":
+        absolute_path = _normalize_absolute_path(str(view_args.get("absolute_path", "")))
+        seo_structured_data.append(
+            {
+                "@context": "https://schema.org",
+                "@type": "SoftwareSourceCode",
+                "name": os.path.basename(absolute_path.rstrip("/")) or absolute_path,
+                "url": seo_canonical_url,
+                "programmingLanguage": "Objective-C",
+                "description": seo_description,
+            }
+        )
+
+    return {
+        "seo_title": seo_title,
+        "seo_description": seo_description,
+        "seo_robots": seo_robots,
+        "seo_canonical_url": seo_canonical_url,
+        "seo_og_type": seo_og_type,
+        "seo_og_title": seo_title,
+        "seo_og_description": seo_description,
+        "seo_og_url": seo_canonical_url,
+        "seo_twitter_card": "summary",
+        "seo_hreflang": "en",
+        "seo_structured_data": seo_structured_data,
+    }
 
 
 @app.get("/")
@@ -468,7 +618,14 @@ def view_header(version_id: str, absolute_path: str) -> str:
 
 @app.errorhandler(404)
 def not_found(_: Exception) -> tuple[str, int]:
-    return render_template("not_found.html"), 404
+    return (
+        render_template(
+            "not_found.html",
+            seo_robots="noindex, nofollow",
+            seo_canonical_url=_canonical_url(url_for("search_page")),
+        ),
+        404,
+    )
 
 
 def _build_view_model(
@@ -762,6 +919,31 @@ def _has_effective_search_args(
     if direction in {"next", "prev"}:
         return True
     return False
+
+
+def _canonical_url(path: str, query_params: dict[str, str] | None = None) -> str:
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    if not query_params:
+        return f"{CANONICAL_SITE_ORIGIN}{normalized_path}"
+
+    filtered = {key: value for key, value in query_params.items() if value}
+    if not filtered:
+        return f"{CANONICAL_SITE_ORIGIN}{normalized_path}"
+    return f"{CANONICAL_SITE_ORIGIN}{normalized_path}?{urlencode(filtered)}"
+
+
+def _build_sitemap_xml(urls: list[str]) -> str:
+    unique_urls = sorted(set(urls))
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+    for url in unique_urls:
+        lines.append("  <url>")
+        lines.append(f"    <loc>{html.escape(url, quote=True)}</loc>")
+        lines.append("  </url>")
+    lines.append("</urlset>")
+    return "\n".join(lines)
 
 
 def _log_view_timing(

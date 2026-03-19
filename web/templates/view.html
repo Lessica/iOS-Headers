@@ -6,6 +6,28 @@
 <span>{{ query_elapsed_ms }} ms</span>
 {% endif %}
 {% endblock %}
+{% block head_meta_extra %}
+<script type="application/ld+json">
+{{ {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  'itemListElement': [
+    {
+      '@type': 'ListItem',
+      'position': 1,
+      'name': 'iOS Headers',
+      'item': 'https://headers.82flex.com/'
+    },
+    {
+      '@type': 'ListItem',
+      'position': 2,
+      'name': file_name,
+      'item': seo_canonical_url
+    }
+  ]
+} | tojson }}
+</script>
+{% endblock %}
 {% block content %}
 <div class="flow">
   <section class="panel stack-4">
@@ -25,7 +47,7 @@
     </div>
   </section>
 
-  <section class="panel stack-3">
+  <section class="panel stack-3" id="version-history">
     <h2 class="title-lg">Switch to…</h2>
     {% include "_partials/version_switch.html" %}
   </section>
@@ -54,7 +76,7 @@
     </div>
   </section>
 
-  <div class="code-area">
+  <div class="code-area" id="source-code-section">
     <button class="btn btn-code-copy" id="copy-source-btn" type="button">Copy Source</button>
     <div class="code-block"><code id="source-code" class="language-objectivec" data-file-name="{{ file_name }}">{{ rendered_source_html|safe }}</code></div>
   </div>
