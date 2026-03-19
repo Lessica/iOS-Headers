@@ -207,7 +207,7 @@ webServer.password = "replace-with-strong-password"
 ### 缓存与伪静态
 
 - 查看页按需渲染并将最终 HTML 写入 Redis 缓存
-- 搜索页按规范化查询参数缓存 SSR HTML（包含 `q/dir/dcursor/ddir` 组合）
+- 搜索页按规范化查询参数缓存 SSR HTML（包含 `q/dir/cursor/direction` 组合）
 - 搜索请求带 `q` 时会使用更短缓存窗口（当前上限 60s）以降低结果陈旧风险
 - 可通过 `.env` 控制页面缓存开关：`ENABLE_REDIS_PAGE_CACHE=true|false`
 - 可通过 `.env` 统一控制缓存 TTL：

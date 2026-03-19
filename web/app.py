@@ -65,8 +65,8 @@ def healthz() -> Response:
 def search_page() -> str:
     raw_query = request.args.get("q", "")
     raw_selected_dir_name = request.args.get("dir", "")
-    raw_directory_cursor = request.args.get("dcursor", "")
-    raw_directory_direction = request.args.get("ddir", "")
+    raw_directory_cursor = request.args.get("cursor", "")
+    raw_directory_direction = request.args.get("direction", "")
 
     query = raw_query.strip()
     selected_dir_name = raw_selected_dir_name.strip()
@@ -97,8 +97,8 @@ def directory_page(directory_name: str) -> str:
         abort(404)
 
     raw_query = request.args.get("q", "")
-    raw_directory_cursor = request.args.get("dcursor", "")
-    raw_directory_direction = request.args.get("ddir", "")
+    raw_directory_cursor = request.args.get("cursor", "")
+    raw_directory_direction = request.args.get("direction", "")
 
     query = raw_query.strip()
     directory_cursor = raw_directory_cursor.strip() or None
@@ -726,8 +726,8 @@ def _search_cache_key(
     directory_page_size: int,
 ) -> str:
     payload = (
-        f"q={query}|dir={selected_dir}|dcursor={directory_cursor or ''}|"
-        f"ddir={directory_direction}|dsize={directory_page_size}"
+        f"q={query}|dir={selected_dir}|cursor={directory_cursor or ''}|"
+        f"direction={directory_direction}|dsize={directory_page_size}"
     )
     digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
     return f"html:search:{digest}"
