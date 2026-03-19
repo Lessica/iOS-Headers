@@ -1,0 +1,31 @@
+# Build context policy for Dockerfile.web:
+# 1) Ignore everything by default.
+# 2) Only include files required by the web image build.
+**
+
+!Dockerfile.web
+!requirements.txt
+!web/
+!web/**
+
+# Re-exclude unnecessary files inside allowed web tree.
+web/**/__pycache__/
+web/**/*.pyc
+web/**/*.pyo
+web/.pytest_cache/
+web/.mypy_cache/
+web/.ruff_cache/
+web/.DS_Store
+
+# Defensive ignores (mainly useful if build context policy is changed later).
+.git/
+.github/
+.idea/
+.vscode/
+.venv/
+venv/
+node_modules/
+dist/
+build/
+data/
+*.log

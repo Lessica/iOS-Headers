@@ -37,6 +37,8 @@
 - 重建表结构：`scripts/deploy_local_stack.zsh init-db`
 - 应用增量迁移：`scripts/deploy_local_stack.zsh migrate-db`
 - 初始化 MinIO bucket：`scripts/deploy_local_stack.zsh init-minio`
+- 预拉取 Web 基础镜像（首次联网一次）：`scripts/deploy_local_stack.zsh prefetch-web-base`
+- 重建 Web（离线优先，使用本地镜像与本地构建缓存）：`scripts/deploy_local_stack.zsh rebuild-web`
 
 默认导入参数（已按大规模场景优化）：
 - `workers=12`

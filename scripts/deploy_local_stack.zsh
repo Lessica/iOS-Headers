@@ -156,9 +156,22 @@ init_minio() {
   ensure_minio_bucket
 }
 
+prefetch_web_base() {
+  require_tools
+  docker pull python:3.12-slim
+  echo "web base image cached: python:3.12-slim"
+}
+
 rebuild_web() {
   require_tools
-  compose up -d --build web nginx
+  if ! docker image inspect python:3.12-slim >/dev/null 2>&1; then
+    echo "missing local base image: python:3.12-slim"
+    echo "run: $0 prefetch-web-base"
+    exit 1
+  fi
+
+  COMPOSE_BAKE=0 COMPOSE_DOCKER_CLI_BUILD=0 DOCKER_BUILDKIT=0 compose build --pull=false web
+  compose up -d --no-build web nginx
   echo "web stack rebuilt"
   compose ps web nginx
 }
@@ -200,7 +213,7 @@ tunnel_logs() {
 }
 
 usage() {
-  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|init-minio|rebuild-web|clear-cache|tunnel-up|tunnel-down|tunnel-restart|tunnel-status|tunnel-logs}"
+  echo "usage: $0 {up|down|restart|status|logs [service]|check|init-db|init-minio|prefetch-web-base|rebuild-web|clear-cache|tunnel-up|tunnel-down|tunnel-restart|tunnel-status|tunnel-logs}"
 }
 
 case "${1:-}" in
@@ -212,6 +225,7 @@ case "${1:-}" in
   check) check ;;
   init-db) init_db ;;
   init-minio) init_minio ;;
+  prefetch-web-base) prefetch_web_base ;;
   rebuild-web) rebuild_web ;;
   clear-cache) clear_cache ;;
   tunnel-up) tunnel_up ;;
