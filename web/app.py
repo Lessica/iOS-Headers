@@ -48,9 +48,9 @@ app.jinja_env.globals["format_version_id"] = lambda version_id: _format_version_
 OWNER_VERSIONS_PILL_LIMIT = 15
 DEFAULT_DIRECTORY_PAGE_SIZE = 50
 CANONICAL_SITE_ORIGIN = "https://headers.82flex.com"
-SITEMAP_DIRECTORY_LIMIT = 300
 SITEMAP_CACHE_KEY = "xml:sitemap:v1"
 SITEMAP_CACHE_TTL_SECONDS = 1800
+SITEMAP_DIRECTORY_FETCH_LIMIT = 100000
 SEARCH_SCOPE_NOTICE = (
     "Search supports directory names, framework names, and Objective-C header file names only; "
     "property, ivar, and method search is unavailable."
@@ -78,7 +78,14 @@ def sitemap_xml() -> Response:
             return Response(cached_xml, mimetype="application/xml")
 
     urls: list[str] = [_canonical_url(url_for("search_page"))]
-    for directory_name, _sample_dir_path in repo.search_directories(prefix="", limit=SITEMAP_DIRECTORY_LIMIT):
+    directory_hits = repo.search_directories(prefix="", limit=SITEMAP_DIRECTORY_FETCH_LIMIT)
+    if len(directory_hits) >= SITEMAP_DIRECTORY_FETCH_LIMIT:
+        app.logger.warning(
+            "sitemap directory list reached fetch limit=%d; consider raising SITEMAP_DIRECTORY_FETCH_LIMIT",
+            SITEMAP_DIRECTORY_FETCH_LIMIT,
+        )
+
+    for directory_name, _sample_dir_path in directory_hits:
         urls.append(
             _canonical_url(
                 url_for("directory_page", directory_name=directory_name),
