@@ -1,11 +1,11 @@
 #!/usr/bin/env zsh
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 ENV_FILE="$ROOT_DIR/.env"
 EXAMPLE_ENV_FILE="$ROOT_DIR/.env.example"
-SQL_FILE="$ROOT_DIR/clickhouse/manual/003_backfill_path_versions.sql"
+SQL_FILE="$ROOT_DIR/clickhouse/manual/004_migrate_paths_dir_name_to_last2_key.sql"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$EXAMPLE_ENV_FILE" "$ENV_FILE"
@@ -27,7 +27,7 @@ compose() {
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
-run_with_compose() {
+compose_clickhouse_ready() {
   command -v docker >/dev/null 2>&1 || return 1
   docker info >/dev/null 2>&1 || return 1
   compose ps -q clickhouse >/dev/null 2>&1 || return 1
@@ -35,8 +35,6 @@ run_with_compose() {
   local container_id
   container_id="$(compose ps -q clickhouse | head -n 1)"
   [[ -n "$container_id" ]] || return 1
-
-  compose exec -T clickhouse clickhouse-client < "$SQL_FILE"
 }
 
 run_with_local_client() {
@@ -75,12 +73,13 @@ if [[ ! -f "$SQL_FILE" ]]; then
   exit 1
 fi
 
-if run_with_compose; then
-  echo "path_versions backfill completed via docker compose"
+if compose_clickhouse_ready; then
+  compose exec -T clickhouse clickhouse-client < "$SQL_FILE"
+  echo "paths dir_name migration completed via docker compose"
   exit 0
 fi
 
 echo "docker compose clickhouse is unavailable, falling back to local clickhouse-client"
 run_with_local_client
 
-echo "path_versions backfill completed"
+echo "paths dir_name migration completed"

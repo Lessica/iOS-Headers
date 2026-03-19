@@ -77,7 +77,7 @@
 - `contents` 中通过 `pack_object_key + pack_offset + pack_length` 定位正文片段。
 - 分片与包大小可调：`--pack-shards`（默认 256）、`--pack-target-bytes`（默认 64MiB）。
 - 导入会对 `versions(version_num, version_id)` 与 `paths(path_id)` 做增量唯一写入，避免分批导入造成重复项。
-- `paths` 表包含派生列（`file_name/file_name_lc/dir_path/dir_name/dir_name_lc`）以优化站点查询，避免运行时路径正则处理。
+- `paths` 表包含派生列（`file_name/file_name_lc/dir_path/dir_name/dir_name_lc`）以优化站点查询，避免运行时路径正则处理；其中 `dir_name` 为目录键（父目录名/目录名，last2 segments）。
 - 默认禁止导入“老于当前库最新版本”的新版本（避免破坏增量语义）。
 - 如需强制导入老版本，显式添加参数：`--allow-old-versions`。
 - 当前流程为 **no-dedup**（不做 content 去重）。
@@ -106,7 +106,7 @@
 
 1. `scripts/import_headers_v2.zsh ...`
 2. `scripts/build_symbol_presence_v2.zsh --truncate-first`
-3. `scripts/backfill_path_versions.zsh`
+3. `clickhouse/manual/scripts/backfill_path_versions.zsh`
 
 ## 端点
 
@@ -193,7 +193,7 @@ webServer.password = "replace-with-strong-password"
   - `Directory`：目录名前缀匹配（如 `Back` → `BackBoardServices`）
   - `Owner`：`filename/interface/protocol/category(host class)` 子串匹配
 - 结果交互：
-  - 选择 `Directory` 结果：跳转到目录伪静态页 `/tree/{directory_name}` 并展示该目录下所有文件（基于最新版本号）
+  - 选择 `Directory` 结果：跳转到目录伪静态页 `/tree/{directory_key}` 并展示该目录下所有文件（基于最新版本号）
   - 选择 `Owner` 结果：直接跳转到查看页（默认打开该结果存在的最新版本）
 
 ### 查看页（`/view/{version_id}/{absolute_path}` 或 `/view/latest/{absolute_path}`）

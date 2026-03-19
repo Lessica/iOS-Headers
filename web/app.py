@@ -191,8 +191,9 @@ def _render_search_page(
         )
 
         if directory_cursor is None:
-            umbrella_file_name = f"{selected_dir_name}-Umbrella.h"
-            fallback_file_name = f"{selected_dir_name}.h"
+            selected_dir_leaf_name = selected_dir_name.rsplit("/", 1)[-1]
+            umbrella_file_name = f"{selected_dir_leaf_name}-Umbrella.h"
+            fallback_file_name = f"{selected_dir_leaf_name}.h"
             umbrella_file_ref = repo.get_file_in_directory_by_preferred_names(
                 directory_name=selected_dir_name,
                 preferred_names=[umbrella_file_name, fallback_file_name],
@@ -534,8 +535,12 @@ def _extract_directory_name(absolute_path: str) -> str | None:
     if not parent_path or parent_path == "/":
         return None
 
-    directory_name = os.path.basename(parent_path.rstrip("/"))
-    return directory_name or None
+    path_segments = [segment for segment in parent_path.split("/") if segment]
+    if not path_segments:
+        return None
+
+    directory_key_segments = path_segments[-2:]
+    return "/".join(directory_key_segments)
 
 
 def _pick_compare_target_version_id(
