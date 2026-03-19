@@ -148,7 +148,8 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
             print(f"[SKIP] Missing cache: {cache_path}", file=sys.stderr)
             return "skipped", None, firmware_dir.name
 
-        out_dir = output_root / firmware_dir.name / cache_relpath
+        # out_dir = output_root / firmware_dir.name / cache_relpath
+        out_dir = output_root / firmware_dir.name
         out_dir.mkdir(parents=True, exist_ok=True)
 
         command = [
