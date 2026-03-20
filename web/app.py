@@ -45,6 +45,7 @@ store = MinioStore(settings)
 search_service = SearchService(repo)
 app.jinja_env.globals["encode_version_id"] = lambda version_id: _encode_version_id_for_url(version_id)
 app.jinja_env.globals["format_version_id"] = lambda version_id: _format_version_id_for_display(version_id, separator=" · ")
+app.jinja_env.globals["format_directory_name"] = lambda directory_name: _format_directory_name_for_display(directory_name)
 OWNER_VERSIONS_PILL_LIMIT = 15
 DEFAULT_DIRECTORY_PAGE_SIZE = 50
 CANONICAL_SITE_ORIGIN = "https://headers.82flex.com"
@@ -142,9 +143,10 @@ def inject_seo_metadata() -> dict[str, Any]:
             f"{SEARCH_SCOPE_NOTICE}"
         )
     elif endpoint == "directory_page" and selected_dir_name:
-        seo_title = f"{selected_dir_name} · iOS Headers"
+        display_dir_name = _format_directory_name_for_display(selected_dir_name)
+        seo_title = f"{display_dir_name} · iOS Headers"
         seo_description = (
-            f"Browse headers in {selected_dir_name} across indexed iOS SDK versions. "
+            f"Browse headers in {display_dir_name} across indexed iOS SDK versions. "
             f"{SEARCH_SCOPE_NOTICE}"
         )
     elif endpoint == "view_header":
@@ -705,6 +707,21 @@ def _extract_directory_name(absolute_path: str) -> str | None:
 
     directory_key_segments = path_segments[-2:]
     return "/".join(directory_key_segments)
+
+
+def _format_directory_name_for_display(directory_name: str) -> str:
+    normalized = directory_name.strip()
+    if not normalized or "/" not in normalized:
+        return normalized
+
+    parent, leaf = normalized.rsplit("/", 1)
+    if not leaf:
+        return normalized
+
+    parent_prefix = parent.split(".", 1)[0]
+    if "." in parent and parent_prefix == leaf:
+        return parent
+    return leaf
 
 
 def _pick_compare_target_version_id(

@@ -574,14 +574,24 @@
 
     .section-head {
       display: flex;
+      flex-wrap: nowrap;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: var(--space-3);
       margin-bottom: var(--space-4);
     }
 
     .section-head .title-lg {
       margin: 0;
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .section-head .chip {
+      flex: 0 0 auto;
+      margin-left: auto;
     }
 
     .section-head + .result-list,

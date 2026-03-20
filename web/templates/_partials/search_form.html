@@ -7,7 +7,7 @@
       type="text"
       name="q"
       value="{{ query }}"
-      placeholder="{{ ('Search in ' ~ selected_dir_name ~ '…') if selected_dir_name else 'Search by framework, class owner, or directory' }}"
+      placeholder="{{ ('Search in ' ~ format_directory_name(selected_dir_name) ~ '…') if selected_dir_name else 'Search by framework, class owner, or directory' }}"
       required
       autocomplete="off"
       spellcheck="false"

@@ -72,7 +72,7 @@
       {% for directory_name, sample_dir_path in directory_hits %}
       <li class="result-item">
         <div class="result-main">
-          <p class="result-title"><a href="{{ url_for('directory_page', directory_name=directory_name) }}">{{ directory_name }}</a></p>
+          <p class="result-title"><a href="{{ url_for('directory_page', directory_name=directory_name) }}">{{ format_directory_name(directory_name) }}</a></p>
           <p class="path-inline">{{ sample_dir_path }}</p>
         </div>
       </li>
@@ -132,9 +132,9 @@
       <h2 class="title-lg">
         Files in
         {% if query %}
-        <a href="{{ url_for('directory_page', directory_name=selected_dir_name) }}">{{ selected_dir_name }}</a>
+        <a href="{{ url_for('directory_page', directory_name=selected_dir_name) }}">{{ format_directory_name(selected_dir_name) }}</a>
         {% else %}
-        {{ selected_dir_name }}
+        {{ format_directory_name(selected_dir_name) }}
         {% endif %}
       </h2>
       <span class="chip">{{ directory_total_unique_paths_count if directory_total_unique_paths_count is not none else directory_file_entries|length }}</span>
