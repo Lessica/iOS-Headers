@@ -184,7 +184,7 @@ clear_cache() {
 
 tunnel_up() {
   require_tools
-  compose --profile tunnel up -d frpc
+  compose --profile tunnel up -d --force-recreate frpc
   echo "frpc tunnel started"
   compose ps frpc
 }
