@@ -32,9 +32,23 @@ services:
     container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_nginx
     ports:
       - "${WEB_PORT:-18080}:80"
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        hex="$(awk '$$2=="00000000" {print $$3; exit}' /proc/net/route)"
+        if [ -n "$$hex" ] && [ "$${#hex}" -eq 8 ]; then
+          o1=$$((16#$$(echo "$$hex" | cut -c7-8)))
+          o2=$$((16#$$(echo "$$hex" | cut -c5-6)))
+          o3=$$((16#$$(echo "$$hex" | cut -c3-4)))
+          o4=$$((16#$$(echo "$$hex" | cut -c1-2)))
+          export LOCAL_DEBUG_TRUSTED_ADDR="$$o1.$$o2.$$o3.$$o4"
+        fi
+        exec /docker-entrypoint.sh nginx -g 'daemon off;'
     environment:
       CDN_ORIGIN_VERIFY_SECRET: ${CDN_ORIGIN_VERIFY_SECRET:-}
-      NGINX_ENVSUBST_FILTER: CDN_ORIGIN_VERIFY_SECRET
+      NGINX_ENVSUBST_FILTER: CDN_ORIGIN_VERIFY_SECRET|LOCAL_DEBUG_TRUSTED_ADDR
     volumes:
       - ./nginx/site.conf:/etc/nginx/templates/default.conf.template:ro
       - ./webroot:/webroot:ro
