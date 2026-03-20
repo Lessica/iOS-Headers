@@ -37,7 +37,7 @@
         {% else %}
           <a
             class="version-pill tone-{{ loop.index0 % 12 }}"
-            href="{{ url_for('view_header_diff', from_version_id=encode_version_id(candidate_version_id), to_version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) }}"
+            href="{{ url_for('view_header_diff', from_version_id=encode_version_id(candidate_version_id), to_version_id=encode_version_id(to_version_id), absolute_path=absolute_path.lstrip('/')) }}"
             aria-label="{{ version_aria_label }}"
           >{{ version_text }}</a>
         {% endif %}
