@@ -584,7 +584,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
     )
     timings_ms["build_view_model"] = int((time.perf_counter() - segment_started_at) * 1000)
 
-    compare_to_version_id = _pick_compare_target_version_id(
+    compare_from_version_id = _pick_compare_target_version_id(
         versions=model.versions,
         current_version_id=model.ref.version_id,
     )
@@ -602,7 +602,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
         rendered_source_html=model.rendered_source_html,
         line_count=len(model.source_text.splitlines()),
         file_size_text=_format_bytes_for_display(model.ref.pack_length),
-        compare_to_version_id=compare_to_version_id,
+        compare_from_version_id=compare_from_version_id,
         source_line_availability=model.source_line_availability,
         query_elapsed_ms=query_elapsed_ms,
         show_query_elapsed_ms=settings.show_query_elapsed_ms,

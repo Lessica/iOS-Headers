@@ -37,10 +37,10 @@
       <span class="chip current">{{ format_version_id(version_id) }}</span>
       <span class="chip">{{ line_count }} lines</span>
       <span class="chip">{{ file_size_text }}</span>
-      {% if compare_to_version_id %}
+      {% if compare_from_version_id %}
       <a
         class="chip chip-action"
-        href="{{ url_for('view_header_diff', from_version_id=encode_version_id(version_id), to_version_id=encode_version_id(compare_to_version_id), absolute_path=absolute_path.lstrip('/')) }}"
+        href="{{ url_for('view_header_diff', from_version_id=encode_version_id(compare_from_version_id), to_version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/')) }}"
       >Compare</a>
       {% endif %}
       <button class="chip chip-action" id="download-source-btn" type="button">Download</button>
