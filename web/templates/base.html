@@ -76,8 +76,15 @@
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", sans-serif;
       color: var(--text);
-      background: radial-gradient(circle at 18% -8%, color-mix(in srgb, var(--accent-soft), transparent 38%), transparent 45%), var(--bg);
+      background-color: var(--bg);
+      background-image: radial-gradient(circle at 18% -8%, var(--accent-soft), transparent 45%);
       line-height: 1.55;
+    }
+
+    @supports (color: color-mix(in srgb, black, white)) {
+      body {
+        background-image: radial-gradient(circle at 18% -8%, color-mix(in srgb, var(--accent-soft), transparent 38%), transparent 45%);
+      }
     }
 
     a {
@@ -293,6 +300,7 @@
       font-size: 0.78rem;
       border-radius: 999px;
       border: 1px solid var(--line-strong);
+      background: var(--surface-soft);
       background: color-mix(in srgb, var(--surface-soft), transparent 20%);
       color: var(--text-muted);
       white-space: nowrap;
@@ -300,6 +308,7 @@
 
     .chip.current {
       color: var(--text);
+      border-color: var(--line-strong);
       border-color: color-mix(in srgb, var(--accent), var(--line-strong) 58%);
       background: var(--accent-soft);
     }
@@ -407,12 +416,15 @@
     }
 
     .btn:hover {
-      background: color-mix(in srgb, var(--surface-subtle), transparent 15%);
+      background: var(--surface-soft);
+      background: color-mix(in srgb, var(--surface-soft), transparent 15%);
       text-decoration: none;
     }
 
     .btn-primary {
+      border-color: var(--accent);
       border-color: color-mix(in srgb, var(--accent), var(--line-strong) 56%);
+      background: var(--accent-soft);
       background: color-mix(in srgb, var(--accent-soft), var(--surface) 40%);
       color: var(--text);
     }
@@ -444,6 +456,7 @@
 
     .search-form-google .search-input:hover,
     .search-form-google .search-input:focus-visible {
+      border-color: var(--accent);
       border-color: color-mix(in srgb, var(--accent), var(--line) 55%);
       box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
     }
@@ -451,12 +464,14 @@
     .search-form-google .btn-search {
       min-height: 38px;
       border-radius: 999px;
+      background: var(--accent-soft);
       background: color-mix(in srgb, var(--accent-soft), var(--surface) 24%);
       padding: 0 14px;
       position: absolute;
       right: 8px;
       top: 7px;
       z-index: 1;
+      border-color: var(--accent);
       border-color: color-mix(in srgb, var(--accent), var(--line) 58%);
     }
 
@@ -515,11 +530,13 @@
       margin-top: var(--space-3);
       font-size: 0.92rem;
       line-height: 1.45;
+      color: var(--text-muted);
       color: color-mix(in srgb, var(--text-muted), transparent 40%);
     }
 
     @media (prefers-color-scheme: dark) {
       .google-subtitle {
+        color: var(--text-muted);
         color: color-mix(in srgb, var(--text-muted), transparent 32%);
       }
     }
@@ -547,6 +564,7 @@
     .summary-card {
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
+      background: var(--surface-soft);
       background: color-mix(in srgb, var(--surface-soft), transparent 20%);
       padding: var(--space-3) var(--space-4);
       display: grid;
@@ -568,6 +586,7 @@
 
     .summary-note {
       margin: 2px 0 0;
+      color: var(--text-muted);
       color: color-mix(in srgb, var(--text-muted), transparent 18%);
       font-size: 0.76rem;
     }
@@ -646,6 +665,7 @@
 
     .path-inline {
       margin: 0;
+      color: var(--text-muted);
       color: color-mix(in srgb, var(--text-muted), transparent 20%);
       font-size: 0.82rem;
       word-break: break-all;
@@ -667,7 +687,8 @@
       border: 1px solid var(--line);
       border-radius: var(--radius-sm);
       padding: var(--space-3);
-      background: color-mix(in srgb, var(--surface-subtle), transparent 16%);
+      background: var(--surface-soft);
+      background: color-mix(in srgb, var(--surface-soft), transparent 16%);
     }
 
     .kv-key {
@@ -774,7 +795,8 @@
     }
 
     th {
-      background: color-mix(in srgb, var(--surface-subtle), transparent 4%);
+      background: var(--surface-soft);
+      background: color-mix(in srgb, var(--surface-soft), transparent 4%);
       font-weight: 620;
       position: sticky;
       top: 0;
@@ -797,7 +819,7 @@
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
-      background: color-mix(in srgb, var(--surface-soft), transparent 22%);
+      background: var(--surface-soft);
       padding: var(--space-4);
       line-height: 1.52;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -845,46 +867,96 @@
     .code-block .token.prolog,
     .code-block .token.doctype,
     .code-block .token.cdata {
-      color: color-mix(in srgb, var(--text-muted), var(--accent) 10%);
+      color: #4d5e83;
     }
 
     .code-block .token.string,
     .code-block .token.char,
     .code-block .token.attr-value {
-      color: color-mix(in srgb, var(--accent), var(--text) 34%);
+      color: #183a99;
     }
 
     .code-block .token.keyword,
     .code-block .token.selector,
     .code-block .token.atrule {
-      color: color-mix(in srgb, var(--accent), var(--text) 20%);
+      color: #1b43b2;
       font-weight: 620;
     }
 
-    .code-block .token.directive,
+    .code-block .token.directive {
+      color: #1b43b2;
+      font-weight: 620;
+    }
+
     .code-block .token.macro,
     .code-block .token.property {
-      color: color-mix(in srgb, var(--text), var(--accent) 44%);
+      color: #142d71;
       font-weight: 560;
     }
 
     .code-block .token.function,
     .code-block .token.class-name,
     .code-block .token.builtin {
-      color: color-mix(in srgb, var(--accent), var(--text) 26%);
+      color: #1a3fa7;
     }
 
     .code-block .token.number,
     .code-block .token.boolean,
     .code-block .token.constant,
     .code-block .token.symbol {
-      color: color-mix(in srgb, var(--accent), var(--text) 28%);
+      color: #193ea4;
     }
 
     .code-block .token.diff-file,
     .code-block .token.diff-hunk,
     .code-block .token.diff-meta {
-      color: color-mix(in srgb, var(--accent), var(--text) 18%);
+      color: #1b44b6;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .code-block .token.comment,
+      .code-block .token.prolog,
+      .code-block .token.doctype,
+      .code-block .token.cdata {
+        color: #97aacd;
+      }
+
+      .code-block .token.string,
+      .code-block .token.char,
+      .code-block .token.attr-value {
+        color: #9ebbfc;
+      }
+
+      .code-block .token.keyword,
+      .code-block .token.selector,
+      .code-block .token.atrule,
+      .code-block .token.directive {
+        color: #8fb1fd;
+      }
+
+      .code-block .token.macro,
+      .code-block .token.property {
+        color: #b6cbf9;
+      }
+
+      .code-block .token.function,
+      .code-block .token.class-name,
+      .code-block .token.builtin {
+        color: #96b5fc;
+      }
+
+      .code-block .token.number,
+      .code-block .token.boolean,
+      .code-block .token.constant,
+      .code-block .token.symbol {
+        color: #98b6fc;
+      }
+
+      .code-block .token.diff-file,
+      .code-block .token.diff-hunk,
+      .code-block .token.diff-meta {
+        color: #8daffd;
+      }
     }
 
     .code-block .token.diff-file,
@@ -907,6 +979,7 @@
       border-radius: var(--radius-sm);
       padding: var(--space-4);
       color: var(--text-muted);
+      background: var(--surface-soft);
       background: color-mix(in srgb, var(--surface-soft), transparent 24%);
     }
 
@@ -1032,6 +1105,59 @@
         display: inline-flex;
         width: auto;
         justify-self: start;
+      }
+    }
+
+    @supports (color: color-mix(in srgb, black, white)) {
+      .code-block {
+        background: color-mix(in srgb, var(--surface-soft), transparent 22%);
+      }
+
+      .code-block .token.comment,
+      .code-block .token.prolog,
+      .code-block .token.doctype,
+      .code-block .token.cdata {
+        color: color-mix(in srgb, var(--text-muted), var(--accent) 10%);
+      }
+
+      .code-block .token.string,
+      .code-block .token.char,
+      .code-block .token.attr-value {
+        color: color-mix(in srgb, var(--accent), var(--text) 34%);
+      }
+
+      .code-block .token.keyword,
+      .code-block .token.selector,
+      .code-block .token.atrule {
+        color: color-mix(in srgb, var(--accent), var(--text) 20%);
+      }
+
+      .code-block .token.directive {
+        color: color-mix(in srgb, var(--accent), var(--text) 20%);
+      }
+
+      .code-block .token.macro,
+      .code-block .token.property {
+        color: color-mix(in srgb, var(--text), var(--accent) 44%);
+      }
+
+      .code-block .token.function,
+      .code-block .token.class-name,
+      .code-block .token.builtin {
+        color: color-mix(in srgb, var(--accent), var(--text) 26%);
+      }
+
+      .code-block .token.number,
+      .code-block .token.boolean,
+      .code-block .token.constant,
+      .code-block .token.symbol {
+        color: color-mix(in srgb, var(--accent), var(--text) 28%);
+      }
+
+      .code-block .token.diff-file,
+      .code-block .token.diff-hunk,
+      .code-block .token.diff-meta {
+        color: color-mix(in srgb, var(--accent), var(--text) 18%);
       }
     }
   </style>
