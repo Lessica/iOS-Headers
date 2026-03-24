@@ -978,8 +978,149 @@ def _convert_header_to_logos(source_text: str) -> str:
         hook_blocks.append("\n".join(hook_lines))
 
     if hook_blocks:
-        return "\n\n".join(hook_blocks)
+        logos_text = "\n\n".join(hook_blocks)
+        return _postprocess_logos_text(logos_text)
     return source_text
+
+
+def _postprocess_logos_text(logos_text: str) -> str:
+    normalized = re.sub(r"\bid\s*/\*\s*block\s*\*/", "id", logos_text)
+    struct_definitions, simplified_text = _extract_expanded_struct_definitions(normalized)
+    if not struct_definitions:
+        return simplified_text
+
+    defs_block = "\n".join(struct_definitions)
+    return f"{defs_block}\n\n{simplified_text.lstrip()}"
+
+
+def _extract_expanded_struct_definitions(text: str) -> tuple[list[str], str]:
+    definitions_by_name: dict[str, str] = {}
+    out_parts: list[str] = []
+    index = 0
+    total = len(text)
+
+    while index < total:
+        struct_match = re.match(r"struct\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{", text[index:])
+        if struct_match is None:
+            out_parts.append(text[index])
+            index += 1
+            continue
+
+        name = struct_match.group(1)
+        brace_open = index + struct_match.end() - 1
+        brace_close = _find_matching_brace(text, brace_open)
+        if brace_close < 0:
+            out_parts.append(text[index])
+            index += 1
+            continue
+
+        full_struct_decl = text[index:brace_close + 1].strip()
+        existing = definitions_by_name.get(name)
+        if existing is None:
+            definitions_by_name[name] = full_struct_decl
+
+        out_parts.append(f"struct {name}")
+        index = brace_close + 1
+
+    ordered_names = _order_struct_definitions(definitions_by_name)
+    definitions = [f"{definitions_by_name[name]};" for name in ordered_names]
+    return definitions, "".join(out_parts)
+
+
+def _order_struct_definitions(definitions_by_name: dict[str, str]) -> list[str]:
+    names_in_input_order = list(definitions_by_name.keys())
+    dependency_map: dict[str, set[str]] = {}
+    dependents_map: dict[str, set[str]] = {name: set() for name in names_in_input_order}
+
+    for name in names_in_input_order:
+        declaration = definitions_by_name[name]
+        references = set(re.findall(r"\bstruct\s+([A-Za-z_][A-Za-z0-9_]*)\b", declaration))
+        references.discard(name)
+        references = {ref for ref in references if ref in definitions_by_name}
+        dependency_map[name] = references
+        for ref in references:
+            dependents_map.setdefault(ref, set()).add(name)
+
+    in_degree: dict[str, int] = {name: len(dependency_map.get(name, set())) for name in names_in_input_order}
+    queue: list[str] = [name for name in names_in_input_order if in_degree[name] == 0]
+    ordered: list[str] = []
+
+    while queue:
+        current = queue.pop(0)
+        ordered.append(current)
+        for dependent in dependents_map.get(current, set()):
+            in_degree[dependent] -= 1
+            if in_degree[dependent] == 0:
+                queue.append(dependent)
+
+    if len(ordered) != len(names_in_input_order):
+        return names_in_input_order
+    return ordered
+
+
+def _find_matching_brace(text: str, open_index: int) -> int:
+    depth = 0
+    in_line_comment = False
+    in_block_comment = False
+    in_string = False
+    string_quote = ""
+
+    index = open_index
+    total = len(text)
+    while index < total:
+        char = text[index]
+        next_char = text[index + 1] if index + 1 < total else ""
+
+        if in_line_comment:
+            if char == "\n":
+                in_line_comment = False
+            index += 1
+            continue
+
+        if in_block_comment:
+            if char == "*" and next_char == "/":
+                in_block_comment = False
+                index += 2
+            else:
+                index += 1
+            continue
+
+        if in_string:
+            if char == "\\" and next_char:
+                index += 2
+                continue
+            if char == string_quote:
+                in_string = False
+                string_quote = ""
+            index += 1
+            continue
+
+        if char == "/" and next_char == "/":
+            in_line_comment = True
+            index += 2
+            continue
+
+        if char == "/" and next_char == "*":
+            in_block_comment = True
+            index += 2
+            continue
+
+        if char in {'"', "'"}:
+            in_string = True
+            string_quote = char
+            index += 1
+            continue
+
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+
+        index += 1
+
+    return -1
 
 
 def _build_logos_method_from_declaration(declaration: str) -> str:
