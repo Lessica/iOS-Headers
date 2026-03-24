@@ -12,13 +12,19 @@
     <h1 class="title-xl text-break">{{ file_name }}</h1>
     <p class="path path-view">{{ absolute_path }}</p>
     <div class="meta-row">
-      <a class="chip current" href="{{ url_for('view_header', version_id=encode_version_id(to_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(to_version_id) }}</a>
+      {% set version_chip_version_id = to_version_id %}
+      {% set version_chip_current = true %}
+      {% set version_chip_href = url_for('view_header', version_id=encode_version_id(to_version_id), absolute_path=absolute_path.lstrip('/')) %}
+      {% include "_partials/version_chip.html" %}
       {% if from_version_id != to_version_id %}
       <a class="chip chip-action" href="{{ url_for('view_header_diff', from_version_id=encode_version_id(to_version_id), to_version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) }}">⇆</a>
       {% else %}
       <span class="chip" aria-disabled="true">⇆</span>
       {% endif %}
-      <a class="chip" href="{{ url_for('view_header', version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(from_version_id) }}</a>
+      {% set version_chip_version_id = from_version_id %}
+      {% set version_chip_current = false %}
+      {% set version_chip_href = url_for('view_header', version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) %}
+      {% include "_partials/version_chip.html" %}
       <span class="chip">{{ to_line_count }} ← {{ from_line_count }} lines</span>
     </div>
   </section>

@@ -34,9 +34,18 @@
     <h1 class="title-xl text-break">{{ file_name }}</h1>
     <p class="path path-view">{{ absolute_path }}</p>
     <div class="meta-row">
-      <span class="chip current">{{ format_version_id(version_id) }}</span>
-      <span class="chip">{{ line_count }} lines</span>
-      <span class="chip">{{ file_size_text }}</span>
+      {% set version_chip_version_id = version_id %}
+      {% set version_chip_current = true %}
+      {% set version_chip_href = none %}
+      {% include "_partials/version_chip.html" %}
+      <span class="chip chip-split">
+        <span class="chip-split-part">{{ line_count }} lines</span>
+        <span class="chip-split-part">{{ file_size_text }}</span>
+      </span>
+      <a class="chip chip-action" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/')) }}" target="_blank" rel="noopener noreferrer">Raw</a>
+      {% if show_logify_button %}
+      <a class="chip chip-action" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/'), format='logos') }}" target="_blank" rel="noopener noreferrer">Logify</a>
+      {% endif %}
       {% if compare_from_version_id %}
       <a
         class="chip chip-action"
@@ -44,10 +53,6 @@
       >Compare</a>
       {% endif %}
       <button class="chip chip-action" id="download-source-btn" type="button">Download</button>
-      <a class="chip chip-action" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/')) }}" target="_blank" rel="noopener noreferrer">Raw</a>
-      {% if show_logify_button %}
-      <a class="chip chip-action" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/'), format='logos') }}" target="_blank" rel="noopener noreferrer">Logify</a>
-      {% endif %}
     </div>
   </section>
 

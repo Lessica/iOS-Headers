@@ -313,6 +313,28 @@
       background: var(--accent-soft);
     }
 
+    .chip-split {
+      gap: 0;
+    }
+
+    .chip-split-part + .chip-split-part {
+      position: relative;
+      margin-left: 8px;
+      padding-left: 8px;
+    }
+
+    .chip-split-part + .chip-split-part::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      width: 1px;
+      height: 0.95em;
+      background: currentColor;
+      opacity: 0.45;
+      transform: translateY(-50%);
+    }
+
     .chip-action {
       cursor: pointer;
       -webkit-appearance: none;

@@ -1,0 +1,37 @@
+{% set chip_classes = 'chip' %}
+{% if version_chip_current %}
+{% set chip_classes = chip_classes ~ ' current' %}
+{% endif %}
+{% if '|' in version_chip_version_id %}
+{% set chip_classes = chip_classes ~ ' chip-split' %}
+{% endif %}
+
+{% if version_chip_href %}
+<a class="{{ chip_classes }}" href="{{ version_chip_href }}">
+  {% if '|' in version_chip_version_id %}
+  {% set version_parts = version_chip_version_id.split('|', 1) %}
+  {% set version_major = version_parts[0].strip() %}
+  {% set version_build = version_parts[1].strip() %}
+  <span class="chip-split-part">{{ version_major }}</span>
+  {% if version_build %}
+  <span class="chip-split-part">{{ version_build }}</span>
+  {% endif %}
+  {% else %}
+  {{ format_version_id(version_chip_version_id) }}
+  {% endif %}
+</a>
+{% else %}
+<span class="{{ chip_classes }}">
+  {% if '|' in version_chip_version_id %}
+  {% set version_parts = version_chip_version_id.split('|', 1) %}
+  {% set version_major = version_parts[0].strip() %}
+  {% set version_build = version_parts[1].strip() %}
+  <span class="chip-split-part">{{ version_major }}</span>
+  {% if version_build %}
+  <span class="chip-split-part">{{ version_build }}</span>
+  {% endif %}
+  {% else %}
+  {{ format_version_id(version_chip_version_id) }}
+  {% endif %}
+</span>
+{% endif %}
