@@ -19,7 +19,7 @@
       <span class="chip" aria-disabled="true">⇆</span>
       {% endif %}
       <a class="chip" href="{{ url_for('view_header', version_id=encode_version_id(from_version_id), absolute_path=absolute_path.lstrip('/')) }}">{{ format_version_id(from_version_id) }}</a>
-      <span class="chip">{{ from_line_count }} → {{ to_line_count }} lines</span>
+      <span class="chip">{{ to_line_count }} ← {{ from_line_count }} lines</span>
     </div>
   </section>
 
