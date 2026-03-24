@@ -1,0 +1,417 @@
+(() => {
+  const sourceCode = document.getElementById('source-code');
+  if (!sourceCode) {
+    return;
+  }
+  const copySourceButton = document.getElementById('copy-source-btn');
+  const downloadSourceButton = document.getElementById('download-source-btn');
+  const sourceFileName = sourceCode.getAttribute('data-file-name') || 'source.h';
+  const codeArea = sourceCode.closest('.code-area');
+
+  const sourceText = () => sourceCode.textContent || '';
+  const setButtonLabelTemporarily = (button, successLabel, defaultLabel) => {
+    if (!button) {
+      return;
+    }
+    button.textContent = successLabel;
+    window.setTimeout(() => {
+      button.textContent = defaultLabel;
+    }, 1200);
+  };
+
+  if (copySourceButton) {
+    copySourceButton.addEventListener('click', async () => {
+      const text = sourceText();
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const fallback = document.createElement('textarea');
+          fallback.value = text;
+          fallback.setAttribute('readonly', '');
+          fallback.style.position = 'absolute';
+          fallback.style.left = '-9999px';
+          document.body.appendChild(fallback);
+          fallback.select();
+          document.execCommand('copy');
+          document.body.removeChild(fallback);
+        }
+        setButtonLabelTemporarily(copySourceButton, 'Copied', 'Copy Source');
+      } catch (_error) {
+        setButtonLabelTemporarily(copySourceButton, 'Copy Failed', 'Copy Source');
+      }
+    });
+
+    const updateCopyButtonPlacement = () => {
+      if (!codeArea) {
+        return;
+      }
+
+      const areaRect = codeArea.getBoundingClientRect();
+      const shouldFix = areaRect.top < 0 && areaRect.bottom > 0;
+      copySourceButton.classList.toggle('is-fixed', shouldFix);
+
+      if (shouldFix) {
+        const rootStyles = window.getComputedStyle(document.documentElement);
+        const spacing = Number.parseFloat(rootStyles.getPropertyValue('--space-4')) || 16;
+        const fixedLeft = Math.max(10, areaRect.right - copySourceButton.offsetWidth - spacing);
+        copySourceButton.style.left = `${fixedLeft}px`;
+        copySourceButton.style.right = 'auto';
+      } else {
+        copySourceButton.style.left = '';
+        copySourceButton.style.right = '';
+      }
+    };
+
+    updateCopyButtonPlacement();
+    window.addEventListener('scroll', updateCopyButtonPlacement, { passive: true });
+    window.addEventListener('resize', updateCopyButtonPlacement);
+  }
+
+  if (downloadSourceButton) {
+    downloadSourceButton.addEventListener('click', () => {
+      const blob = new Blob([sourceText()], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = sourceFileName || 'source.h';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setButtonLabelTemporarily(downloadSourceButton, 'Downloaded', 'Download');
+    });
+  }
+
+  const keywordPattern = /(?:@(import|interface|implementation|end|property|protocol|class|selector|synthesize|dynamic|required|optional|public|private|protected|package|try|catch|finally|throw|autoreleasepool)\b|\b(?:if|else|for|while|do|switch|case|default|break|continue|goto|return|typedef|struct|union|enum|sizeof|const|static|extern|inline|volatile|restrict|signed|unsigned|short|long|void|char|int|float|double|_Bool|BOOL|bool|id|instancetype|Class|SEL|IMP|Protocol|NSInteger|NSUInteger|CGFloat|NSTimeInterval|NSRange|CFTypeRef|nullable|nonnull|_Nullable|_Nonnull|_Null_unspecified|null_resettable|NS_ASSUME_NONNULL_BEGIN|NS_ASSUME_NONNULL_END|NS_SWIFT_NAME|NS_REFINED_FOR_SWIFT|NS_DESIGNATED_INITIALIZER|NS_UNAVAILABLE|NS_EXTENSION_UNAVAILABLE|NS_REQUIRES_SUPER|NS_NOESCAPE|NS_OPTIONS|NS_ENUM|CF_ENUM|CF_OPTIONS|API_AVAILABLE|API_DEPRECATED|API_UNAVAILABLE|API_DEPRECATED_WITH_REPLACEMENT|nonatomic|atomic|strong|weak|copy|assign|retain|unsafe_unretained|readonly|readwrite|getter|setter|class|dynamic|direct)\b)/g;
+  const tokenPattern = /(\/\/[^\n]*|\/\*[^\n]*?\*\/|@?"(?:\\.|[^"\\\r\n])*"|#\s*(?:if|ifdef|ifndef|elif|else|endif|define|undef|include|import|pragma)\b[^\n]*)/g;
+  const keywordHintPattern = /[@A-Za-z_]/;
+  const tokenHintPattern = /[#"@\/]/;
+
+  const highlightKeywords = (text) => {
+    if (!text) {
+      return document.createTextNode('');
+    }
+    if (!keywordHintPattern.test(text)) {
+      return document.createTextNode(text);
+    }
+
+    keywordPattern.lastIndex = 0;
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    let keywordMatch;
+    let hasMatch = false;
+
+    while ((keywordMatch = keywordPattern.exec(text)) !== null) {
+      hasMatch = true;
+      if (keywordMatch.index > cursor) {
+        fragment.appendChild(document.createTextNode(text.slice(cursor, keywordMatch.index)));
+      }
+
+      const span = document.createElement('span');
+      span.className = 'token keyword';
+      span.textContent = keywordMatch[0];
+      fragment.appendChild(span);
+      cursor = keywordMatch.index + keywordMatch[0].length;
+    }
+
+    if (!hasMatch) {
+      return document.createTextNode(text);
+    }
+
+    if (cursor < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+
+    return fragment;
+  };
+
+  const highlightLineText = (text) => {
+    if (!text) {
+      return document.createTextNode('');
+    }
+    if (!tokenHintPattern.test(text)) {
+      return highlightKeywords(text);
+    }
+
+    tokenPattern.lastIndex = 0;
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+    let tokenMatch;
+
+    while ((tokenMatch = tokenPattern.exec(text)) !== null) {
+      if (tokenMatch.index > cursor) {
+        fragment.appendChild(highlightKeywords(text.slice(cursor, tokenMatch.index)));
+      }
+
+      const tokenText = tokenMatch[0];
+      const span = document.createElement('span');
+      if (tokenText.startsWith('//') || tokenText.startsWith('/*')) {
+        span.className = 'token comment';
+      } else if (tokenText.startsWith('#')) {
+        span.className = 'token directive';
+      } else {
+        span.className = 'token string';
+      }
+      span.textContent = tokenText;
+      fragment.appendChild(span);
+      cursor = tokenMatch.index + tokenText.length;
+    }
+
+    if (cursor < text.length) {
+      fragment.appendChild(highlightKeywords(text.slice(cursor)));
+    }
+
+    return fragment;
+  };
+
+  const originalNodes = Array.from(sourceCode.childNodes);
+  const lines = [[]];
+
+  const appendTextToLines = (text) => {
+    let segmentStart = 0;
+
+    while (segmentStart <= text.length) {
+      const newlineIndex = text.indexOf('\n', segmentStart);
+      if (newlineIndex === -1) {
+        const tail = text.slice(segmentStart);
+        if (tail) {
+          lines[lines.length - 1].push({ type: 'text', value: tail });
+        }
+        break;
+      }
+
+      const chunk = text.slice(segmentStart, newlineIndex);
+      if (chunk) {
+        lines[lines.length - 1].push({ type: 'text', value: chunk });
+      }
+      lines.push([]);
+      segmentStart = newlineIndex + 1;
+    }
+  };
+
+  for (const node of originalNodes) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      appendTextToLines(node.nodeValue || '');
+    } else {
+      lines[lines.length - 1].push({ type: 'node', value: node.cloneNode(true) });
+    }
+  }
+
+  const highlightedSource = document.createDocumentFragment();
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    for (const part of line) {
+      if (part.type === 'text') {
+        highlightedSource.appendChild(highlightLineText(part.value));
+      } else {
+        highlightedSource.appendChild(part.value);
+      }
+    }
+
+    if (lineIndex < lines.length - 1) {
+      highlightedSource.appendChild(document.createTextNode('\n'));
+    }
+  }
+
+  sourceCode.textContent = '';
+  sourceCode.appendChild(highlightedSource);
+
+  const lineAvailabilityPayload = document.getElementById('source-line-availability');
+  const lineAvailability = lineAvailabilityPayload ? JSON.parse(lineAvailabilityPayload.textContent || '{}') : {};
+  if (!lineAvailability || Object.keys(lineAvailability).length === 0) {
+    return;
+  }
+
+  const sourceBlock = sourceCode.closest('.code-block');
+  if (!sourceBlock) {
+    return;
+  }
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'source-hover-tip';
+  document.body.appendChild(tooltip);
+
+  let activeLineKey = null;
+  let lastPointerEvent = null;
+
+  const fullText = sourceCode.textContent || '';
+  const lineStarts = [0];
+  for (let index = 0; index < fullText.length; index += 1) {
+    if (fullText[index] === '\n') {
+      lineStarts.push(index + 1);
+    }
+  }
+
+  const lineNumberForOffset = (offset) => {
+    let left = 0;
+    let right = lineStarts.length - 1;
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      if (lineStarts[mid] <= offset) {
+        left = mid + 1;
+      } else {
+        right = mid - 1;
+      }
+    }
+    return right + 1;
+  };
+  const hoverDelayMs = 320;
+  const hideOnMoveThresholdPx = 2;
+  let hoverTimerId = null;
+  let shownPointer = null;
+
+  const hideTooltip = () => {
+    tooltip.style.display = 'none';
+    activeLineKey = null;
+    shownPointer = null;
+  };
+
+  const clearHoverTimer = () => {
+    if (hoverTimerId !== null) {
+      window.clearTimeout(hoverTimerId);
+      hoverTimerId = null;
+    }
+  };
+
+  const positionTooltip = (x, y) => {
+    const offset = 14;
+    const sidePadding = 10;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const maxWidth = Math.max(280, Math.min(720, viewportWidth - sidePadding * 2));
+    tooltip.style.maxWidth = `${maxWidth}px`;
+
+    tooltip.style.left = `${x + offset}px`;
+    tooltip.style.top = `${y + offset}px`;
+
+    const rect = tooltip.getBoundingClientRect();
+    const maxLeft = viewportWidth - rect.width - sidePadding;
+    const maxTop = viewportHeight - rect.height - sidePadding;
+
+    if (rect.right > viewportWidth - sidePadding) {
+      const leftPreferred = x - rect.width - offset;
+      tooltip.style.left = `${Math.max(sidePadding, leftPreferred)}px`;
+    }
+
+    const adjustedRect = tooltip.getBoundingClientRect();
+    if (adjustedRect.left > maxLeft) {
+      tooltip.style.left = `${Math.max(sidePadding, maxLeft)}px`;
+    }
+    if (adjustedRect.top > maxTop) {
+      tooltip.style.top = `${Math.max(sidePadding, y - adjustedRect.height - offset)}px`;
+    }
+  };
+
+  const caretOffsetFromPointer = (event) => {
+    if (document.caretPositionFromPoint) {
+      const position = document.caretPositionFromPoint(event.clientX, event.clientY);
+      if (position && sourceCode.contains(position.offsetNode)) {
+        const range = document.createRange();
+        range.setStart(sourceCode, 0);
+        range.setEnd(position.offsetNode, position.offset);
+        return range.toString().length;
+      }
+    }
+
+    if (document.caretRangeFromPoint) {
+      const range = document.caretRangeFromPoint(event.clientX, event.clientY);
+      if (range && sourceCode.contains(range.startContainer)) {
+        const offsetRange = document.createRange();
+        offsetRange.setStart(sourceCode, 0);
+        offsetRange.setEnd(range.startContainer, range.startOffset);
+        return offsetRange.toString().length;
+      }
+    }
+
+    return -1;
+  };
+
+  const lineInfoFromPointer = (event) => {
+    const offset = caretOffsetFromPointer(event);
+    if (offset < 0) {
+      return null;
+    }
+
+    const safeOffset = Math.max(0, Math.min(offset, fullText.length));
+    const lineNumber = lineNumberForOffset(safeOffset);
+    const lineStart = lineStarts[Math.max(0, lineNumber - 1)] || 0;
+    const nextLineStart = lineStarts[lineNumber] ?? (fullText.length + 1);
+    const lineEnd = Math.max(lineStart, nextLineStart - 1);
+
+    let textEnd = lineEnd;
+    while (textEnd > lineStart && /\s/.test(fullText[textEnd - 1])) {
+      textEnd -= 1;
+    }
+
+    return {
+      lineNumber,
+      isOnText: safeOffset < textEnd,
+    };
+  };
+
+  const toPointerSnapshot = (event) => ({
+    clientX: event.clientX,
+    clientY: event.clientY,
+  });
+
+  const scheduleTooltip = (event) => {
+    lastPointerEvent = toPointerSnapshot(event);
+    const lineInfo = lineInfoFromPointer(event);
+    if (!lineInfo || !lineInfo.isOnText) {
+      clearHoverTimer();
+      hideTooltip();
+      return;
+    }
+    const lineNumber = lineInfo.lineNumber;
+
+    const versions = lineAvailability[String(lineNumber)] || lineAvailability[lineNumber] || null;
+    if (!Array.isArray(versions) || versions.length === 0) {
+      clearHoverTimer();
+      hideTooltip();
+      return;
+    }
+
+    const lineKey = String(lineNumber);
+    if (activeLineKey && activeLineKey !== lineKey) {
+      hideTooltip();
+    }
+    if (shownPointer) {
+      const movedX = Math.abs(event.clientX - shownPointer.clientX);
+      const movedY = Math.abs(event.clientY - shownPointer.clientY);
+      if (movedX >= hideOnMoveThresholdPx || movedY >= hideOnMoveThresholdPx) {
+        hideTooltip();
+      }
+    }
+
+    clearHoverTimer();
+    hoverTimerId = window.setTimeout(() => {
+      if (!lastPointerEvent) {
+        return;
+      }
+
+      const stableLineInfo = lineInfoFromPointer(lastPointerEvent);
+      if (!stableLineInfo || !stableLineInfo.isOnText || String(stableLineInfo.lineNumber) !== lineKey) {
+        return;
+      }
+
+      tooltip.textContent = `Available in ${versions.join(', ')}`;
+      tooltip.style.display = 'block';
+      activeLineKey = lineKey;
+      shownPointer = { ...lastPointerEvent };
+      positionTooltip(lastPointerEvent.clientX, lastPointerEvent.clientY);
+    }, hoverDelayMs);
+  };
+
+  sourceBlock.addEventListener('mouseenter', scheduleTooltip);
+  sourceBlock.addEventListener('mousemove', scheduleTooltip);
+
+  sourceBlock.addEventListener('mouseleave', () => {
+    clearHoverTimer();
+    hideTooltip();
+  });
+  sourceBlock.addEventListener('scroll', () => {
+    clearHoverTimer();
+    hideTooltip();
+  }, { passive: true });
+})();

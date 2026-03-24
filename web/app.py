@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode, unquote
 
-from flask import Flask, Response, abort, redirect, render_template, request, url_for
+from flask import Flask, Response, abort, redirect, render_template, request, send_from_directory, url_for
 
 from web.config import load_settings
 from web.data.cache import RedisCache
@@ -34,6 +34,7 @@ class ViewModel:
 settings = load_settings()
 app = Flask(__name__)
 app.logger.setLevel(logging.INFO)
+ASSETS_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "webroot", "assets"))
 timing_logger = logging.getLogger("gunicorn.error")
 cache = RedisCache(settings)
 repo = Repository(
@@ -70,6 +71,11 @@ SOURCE_HOVER_SYMBOL_TYPES = {
 @app.get("/healthz")
 def healthz() -> Response:
     return Response("ok", mimetype="text/plain")
+
+
+@app.get("/assets/<path:asset_path>")
+def assets_file(asset_path: str):
+    return send_from_directory(ASSETS_ROOT, asset_path)
 
 
 @app.get("/sitemap.xml")
