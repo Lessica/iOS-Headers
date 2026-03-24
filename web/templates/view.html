@@ -42,9 +42,13 @@
         <span class="chip-split-part">{{ line_count }} lines</span>
         <span class="chip-split-part">{{ file_size_text }}</span>
       </span>
-      <a class="chip chip-action" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/')) }}" target="_blank" rel="noopener noreferrer">Raw</a>
       {% if show_logify_button %}
-      <a class="chip chip-action" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/'), format='logos') }}" target="_blank" rel="noopener noreferrer">Logify</a>
+      <span class="chip chip-split chip-link-group">
+        <a class="chip-split-part" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/')) }}" target="_blank" rel="noopener noreferrer">Raw</a>
+        <a class="chip-split-part" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/'), format='logos') }}" target="_blank" rel="noopener noreferrer">Logify</a>
+      </span>
+      {% else %}
+      <a class="chip chip-action" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/')) }}" target="_blank" rel="noopener noreferrer">Raw</a>
       {% endif %}
       {% if compare_from_version_id %}
       <a
