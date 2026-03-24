@@ -313,6 +313,22 @@ input:focus-visible {
   transform: translateY(-50%);
 }
 
+.chip-split-action {
+  border: 0;
+  background: none;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.chip-split-action:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .chip-link-group {
   padding-left: 0;
   padding-right: 0;

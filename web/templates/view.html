@@ -40,7 +40,16 @@
       {% include "_partials/version_chip.html" %}
       <span class="chip chip-split">
         <span class="chip-split-part">{{ line_count }} lines</span>
-        <span class="chip-split-part">{{ file_size_text }}</span>
+        <button
+          class="chip-split-part chip-split-action"
+          id="download-source-btn"
+          type="button"
+          data-default-label="{{ file_size_text }}"
+          data-success-label="Downloaded"
+          data-error-label="Download Failed"
+          aria-label="Download source file"
+          title="Download source"
+        >{{ file_size_text }}</button>
       </span>
       {% if show_logify_button %}
       <span class="chip chip-split chip-link-group">
@@ -56,7 +65,6 @@
         href="{{ url_for('view_header_diff', from_version_id=encode_version_id(compare_from_version_id), to_version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/')) }}"
       >Compare</a>
       {% endif %}
-      <button class="chip chip-action" id="download-source-btn" type="button">Download</button>
     </div>
   </section>
 

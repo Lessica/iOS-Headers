@@ -69,17 +69,32 @@
   }
 
   if (downloadSourceButton) {
+    const downloadDefaultLabel =
+      downloadSourceButton.getAttribute('data-default-label')
+      || downloadSourceButton.textContent
+      || 'Download';
+    const downloadSuccessLabel =
+      downloadSourceButton.getAttribute('data-success-label')
+      || 'Downloaded';
+    const downloadErrorLabel =
+      downloadSourceButton.getAttribute('data-error-label')
+      || 'Download Failed';
+
     downloadSourceButton.addEventListener('click', () => {
-      const blob = new Blob([sourceText()], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = sourceFileName || 'source.h';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setButtonLabelTemporarily(downloadSourceButton, 'Downloaded', 'Download');
+      try {
+        const blob = new Blob([sourceText()], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = sourceFileName || 'source.h';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        setButtonLabelTemporarily(downloadSourceButton, downloadSuccessLabel, downloadDefaultLabel);
+      } catch (_error) {
+        setButtonLabelTemporarily(downloadSourceButton, downloadErrorLabel, downloadDefaultLabel);
+      }
     });
   }
 
