@@ -134,6 +134,49 @@
       return highlightKeywords(text);
     }
 
+    const splitDirectiveAndComment = (directiveText) => {
+      let inDoubleQuote = false;
+      let inSingleQuote = false;
+      let escaped = false;
+
+      for (let index = 0; index < directiveText.length - 1; index += 1) {
+        const current = directiveText[index];
+        const next = directiveText[index + 1];
+
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+
+        if ((inDoubleQuote || inSingleQuote) && current === '\\') {
+          escaped = true;
+          continue;
+        }
+
+        if (!inSingleQuote && current === '"') {
+          inDoubleQuote = !inDoubleQuote;
+          continue;
+        }
+
+        if (!inDoubleQuote && current === "'") {
+          inSingleQuote = !inSingleQuote;
+          continue;
+        }
+
+        if (!inDoubleQuote && !inSingleQuote && current === '/' && (next === '/' || next === '*')) {
+          return {
+            directive: directiveText.slice(0, index),
+            comment: directiveText.slice(index),
+          };
+        }
+      }
+
+      return {
+        directive: directiveText,
+        comment: '',
+      };
+    };
+
     tokenPattern.lastIndex = 0;
     const fragment = document.createDocumentFragment();
     let cursor = 0;
@@ -145,16 +188,31 @@
       }
 
       const tokenText = tokenMatch[0];
-      const span = document.createElement('span');
       if (tokenText.startsWith('//') || tokenText.startsWith('/*')) {
+        const span = document.createElement('span');
         span.className = 'token comment';
+        span.textContent = tokenText;
+        fragment.appendChild(span);
       } else if (tokenText.startsWith('#')) {
-        span.className = 'token directive';
+        const { directive, comment } = splitDirectiveAndComment(tokenText);
+        if (directive) {
+          const directiveSpan = document.createElement('span');
+          directiveSpan.className = 'token directive';
+          directiveSpan.textContent = directive;
+          fragment.appendChild(directiveSpan);
+        }
+        if (comment) {
+          const commentSpan = document.createElement('span');
+          commentSpan.className = 'token comment';
+          commentSpan.textContent = comment;
+          fragment.appendChild(commentSpan);
+        }
       } else {
+        const span = document.createElement('span');
         span.className = 'token string';
+        span.textContent = tokenText;
+        fragment.appendChild(span);
       }
-      span.textContent = tokenText;
-      fragment.appendChild(span);
       cursor = tokenMatch.index + tokenText.length;
     }
 
