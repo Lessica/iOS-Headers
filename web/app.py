@@ -5,6 +5,7 @@ import html
 import hashlib
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -460,12 +461,16 @@ def raw_latest_header(absolute_path: str) -> Any:
     if result is None:
         abort(404)
 
+    requested_format = request.args.get("format", "").strip().lower()
+    route_args: dict[str, Any] = {
+        "version_id": _encode_version_id_for_url(result.version_id),
+        "absolute_path": result.absolute_path.lstrip("/"),
+    }
+    if requested_format:
+        route_args["format"] = requested_format
+
     return redirect(
-        url_for(
-            "raw_header",
-            version_id=_encode_version_id_for_url(result.version_id),
-            absolute_path=result.absolute_path.lstrip("/"),
-        )
+        url_for("raw_header", **route_args)
     )
 
 
@@ -622,6 +627,7 @@ def view_header(version_id: str, absolute_path: str) -> str:
         line_count=len(model.source_text.splitlines()),
         file_size_text=_format_bytes_for_display(model.ref.pack_length),
         compare_from_version_id=compare_from_version_id,
+        show_logify_button=_supports_logos_format(model.source_text),
         source_line_availability=model.source_line_availability,
         query_elapsed_ms=query_elapsed_ms,
         show_query_elapsed_ms=settings.show_query_elapsed_ms,
@@ -665,6 +671,11 @@ def raw_header(version_id: str, absolute_path: str) -> Response:
         length=content_ref.pack_length,
     )
     source_text = source_bytes.decode("utf-8", errors="replace")
+
+    output_format = request.args.get("format", "").strip().lower()
+    if output_format == "logos":
+        source_text = _convert_header_to_logos(source_text)
+
     return Response(source_text, mimetype="text/plain")
 
 
@@ -941,6 +952,318 @@ def _build_unified_diff_text(
         n=3,
     )
     return "\n".join(diff_lines)
+
+
+def _supports_logos_format(source_text: str) -> bool:
+    interface_pattern = re.compile(r"@interface\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:\([^\)]*\))?")
+    return interface_pattern.search(source_text) is not None
+
+
+def _convert_header_to_logos(source_text: str) -> str:
+    hook_blocks: list[str] = []
+    interface_block_pattern = re.compile(
+        r"@interface\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(([^\)]*)\))?([\s\S]*?)@end"
+    )
+
+    for interface_match in interface_block_pattern.finditer(source_text):
+        class_name = interface_match.group(1).strip()
+        interface_body = interface_match.group(3) or ""
+        declarations = _extract_objc_method_declarations(interface_body)
+        methods = [_build_logos_method_from_declaration(item) for item in declarations]
+        methods = [item for item in methods if item]
+        if not methods:
+            continue
+
+        hook_lines = [f"%hook {class_name}", *methods, "%end"]
+        hook_blocks.append("\n".join(hook_lines))
+
+    if hook_blocks:
+        return "\n\n".join(hook_blocks)
+    return source_text
+
+
+def _build_logos_method_from_declaration(declaration: str) -> str:
+    compact = " ".join(declaration.replace("\n", " ").replace("\t", " ").split())
+    if not compact.endswith(";"):
+        return ""
+
+    signature = compact[:-1].strip()
+    match = re.match(r"^([+-])\s*\(([^\)]*)\)\s*(.+)$", signature)
+    if match is None:
+        return ""
+
+    return_type = (match.group(2) or "").strip()
+    method_tail = (match.group(3) or "").strip()
+    signature_text = f"{match.group(1)} ({return_type}){method_tail}"
+    normalized = _normalize_method_return_type(return_type)
+
+    if normalized == "void":
+        return f"{signature_text} {{ %log; %orig; }}"
+    if normalized == "bool":
+        return f"{signature_text} {{ %log; {return_type} r = %orig; HBLogDebug(@\" = %d\", (int)r); return r; }}"
+    if normalized == "float":
+        return f"{signature_text} {{ %log; {return_type} r = %orig; HBLogDebug(@\" = %f\", (double)r); return r; }}"
+    if normalized == "int":
+        return f"{signature_text} {{ %log; {return_type} r = %orig; HBLogDebug(@\" = %lld\", (long long)r); return r; }}"
+    if normalized == "uint":
+        return f"{signature_text} {{ %log; {return_type} r = %orig; HBLogDebug(@\" = %llu\", (unsigned long long)r); return r; }}"
+    if normalized == "pointer":
+        return f"{signature_text} {{ %log; {return_type} r = %orig; HBLogDebug(@\" = %p\", (void *)r); return r; }}"
+    if normalized == "object":
+        return f"{signature_text} {{ %log; {return_type} r = %orig; HBLogDebug(@\" = %@\", r); return r; }}"
+    struct_log_expr = _build_struct_log_expr(return_type, "r")
+    if struct_log_expr:
+        return f"{signature_text} {{ %log; {return_type} r = %orig; HBLogDebug(@\" = %@\", {struct_log_expr}); return r; }}"
+    return f"{signature_text} {{ %log; {return_type} r = %orig; return r; }}"
+
+
+def _normalize_method_return_type(raw_return_type: str) -> str:
+    cleaned = re.sub(r"/\*.*?\*/", " ", raw_return_type)
+    lowered = cleaned.strip().lower()
+    if not lowered:
+        return "object"
+
+    for token in (
+        "nullable",
+        "nonnull",
+        "_nullable",
+        "_nonnull",
+        "_null_unspecified",
+        "null_unspecified",
+        "__kindof",
+        "const",
+        "volatile",
+        "_atomic",
+        "_nonatomic",
+    ):
+        lowered = lowered.replace(token, "")
+    lowered = " ".join(lowered.split())
+
+    if lowered == "void":
+        return "void"
+
+    if ("*" not in lowered and "^" not in lowered) and (
+        _contains_type_word(lowered, "struct") or _contains_type_word(lowered, "union")
+    ):
+        return "other"
+
+    bool_words = {
+        "bool",
+        "_bool",
+        "boolean",
+        "bool_t",
+        "bool32_t",
+        "bool8_t",
+        "bool16_t",
+        "bool64_t",
+        "bool32",
+        "bool64",
+        "bool16",
+        "bool8",
+    }
+    if any(_contains_type_word(lowered, word) for word in bool_words) or _contains_type_word(lowered, "BOOL".lower()):
+        return "bool"
+
+    float_words = {"float", "double", "cgfloat"}
+    if any(_contains_type_word(lowered, word) for word in float_words):
+        return "float"
+
+    object_words = {"id", "instancetype", "class", "sel", "imp", "protocol"}
+    if any(_contains_type_word(lowered, word) for word in object_words):
+        return "object"
+
+    if "*" in lowered or "^" in lowered:
+        c_pointer_words = {
+            "void",
+            "char",
+            "short",
+            "int",
+            "long",
+            "float",
+            "double",
+            "bool",
+            "_bool",
+            "unsigned",
+            "signed",
+            "size_t",
+            "uintptr_t",
+            "intptr_t",
+            "struct",
+            "union",
+            "enum",
+        }
+        if any(_contains_type_word(lowered, word) for word in c_pointer_words):
+            return "pointer"
+        return "object"
+
+    unsigned_words = {"unsigned", "nsuinteger", "uint", "size_t", "uintptr_t", "NSUInteger".lower()}
+    integer_words = {
+        "char",
+        "short",
+        "int",
+        "long",
+        "integer",
+        "NSInteger".lower(),
+        "cfindex",
+        "off_t",
+        "ssize_t",
+        "int8",
+        "int16",
+        "int32",
+        "int64",
+        "uint8",
+        "uint16",
+        "uint32",
+        "uint64",
+    }
+
+    if any(_contains_type_word(lowered, word) for word in unsigned_words):
+        return "uint"
+    if any(_contains_type_word(lowered, word) for word in integer_words):
+        return "int"
+
+    return "other"
+
+
+def _contains_type_word(text: str, word: str) -> bool:
+    return re.search(rf"(?<![A-Za-z0-9_]){re.escape(word)}(?![A-Za-z0-9_])", text) is not None
+
+
+def _build_struct_log_expr(raw_return_type: str, value_name: str) -> str:
+    cleaned = re.sub(r"/\*.*?\*/", " ", raw_return_type)
+    lowered = " ".join(cleaned.strip().lower().split())
+    if not lowered:
+        return ""
+
+    if "cgrect" in lowered:
+        return f"NSStringFromCGRect({value_name})"
+    if "cgpoint" in lowered:
+        return f"NSStringFromCGPoint({value_name})"
+    if "cgsize" in lowered:
+        return f"NSStringFromCGSize({value_name})"
+    if "uiedgeinsets" in lowered:
+        return f"NSStringFromUIEdgeInsets({value_name})"
+    if "nsdirectionaledgeinsets" in lowered:
+        return f"NSStringFromDirectionalEdgeInsets({value_name})"
+    if "cgaffinetran" in lowered:
+        return f"NSStringFromCGAffineTransform({value_name})"
+    if "cgvector" in lowered:
+        return f"NSStringFromCGVector({value_name})"
+    if "uioffset" in lowered:
+        return f"NSStringFromUIOffset({value_name})"
+    if "nsrange" in lowered:
+        return f"NSStringFromRange({value_name})"
+    return ""
+
+
+def _extract_objc_method_declarations(interface_body: str) -> list[str]:
+    declarations: list[str] = []
+    current_chars: list[str] = []
+    collecting = False
+    paren_depth = 0
+    brace_depth = 0
+
+    in_line_comment = False
+    in_block_comment = False
+    in_string = False
+    string_quote = ""
+
+    body_len = len(interface_body)
+    index = 0
+    while index < body_len:
+        char = interface_body[index]
+        next_char = interface_body[index + 1] if index + 1 < body_len else ""
+
+        if in_line_comment:
+            if collecting:
+                current_chars.append(char)
+            if char == "\n":
+                in_line_comment = False
+            index += 1
+            continue
+
+        if in_block_comment:
+            if collecting:
+                current_chars.append(char)
+            if char == "*" and next_char == "/":
+                if collecting:
+                    current_chars.append(next_char)
+                in_block_comment = False
+                index += 2
+            else:
+                index += 1
+            continue
+
+        if in_string:
+            if collecting:
+                current_chars.append(char)
+            if char == "\\" and next_char:
+                if collecting:
+                    current_chars.append(next_char)
+                index += 2
+                continue
+            if char == string_quote:
+                in_string = False
+                string_quote = ""
+            index += 1
+            continue
+
+        if char == "/" and next_char == "/":
+            if collecting:
+                current_chars.append(char)
+                current_chars.append(next_char)
+            in_line_comment = True
+            index += 2
+            continue
+
+        if char == "/" and next_char == "*":
+            if collecting:
+                current_chars.append(char)
+                current_chars.append(next_char)
+            in_block_comment = True
+            index += 2
+            continue
+
+        if char in {'"', "'"}:
+            if collecting:
+                current_chars.append(char)
+            in_string = True
+            string_quote = char
+            index += 1
+            continue
+
+        if not collecting and char in {"+", "-"}:
+            left_index = index - 1
+            while left_index >= 0 and interface_body[left_index] in {" ", "\t", "\r"}:
+                left_index -= 1
+            if left_index < 0 or interface_body[left_index] == "\n":
+                collecting = True
+                current_chars = [char]
+                paren_depth = 0
+                brace_depth = 0
+                index += 1
+                continue
+
+        if collecting:
+            current_chars.append(char)
+            if char == "(":
+                paren_depth += 1
+            elif char == ")":
+                paren_depth = max(0, paren_depth - 1)
+            elif char == "{":
+                brace_depth += 1
+            elif char == "}":
+                brace_depth = max(0, brace_depth - 1)
+            elif char == ";" and paren_depth == 0 and brace_depth == 0:
+                declaration = "".join(current_chars).strip()
+                if declaration:
+                    declarations.append(declaration)
+                collecting = False
+                current_chars = []
+
+        index += 1
+
+    return declarations
 
 
 def _view_cache_key(version_num: int, path_id: int) -> str:
