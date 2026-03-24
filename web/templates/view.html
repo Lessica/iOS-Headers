@@ -37,6 +37,7 @@
       <span class="chip current">{{ format_version_id(version_id) }}</span>
       <span class="chip">{{ line_count }} lines</span>
       <span class="chip">{{ file_size_text }}</span>
+      <a class="chip chip-action" href="{{ url_for('raw_header', version_id=encode_version_id(version_id), absolute_path=absolute_path.lstrip('/')) }}" target="_blank" rel="noopener noreferrer">Raw</a>
       {% if compare_from_version_id %}
       <a
         class="chip chip-action"

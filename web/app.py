@@ -450,6 +450,25 @@ def view_latest_header(absolute_path: str) -> Any:
     )
 
 
+@app.get("/raw/latest/<path:absolute_path>")
+def raw_latest_header(absolute_path: str) -> Any:
+    normalized_path = _normalize_absolute_path(absolute_path)
+    if not normalized_path:
+        abort(404)
+
+    result = repo.resolve_latest_for_path(normalized_path)
+    if result is None:
+        abort(404)
+
+    return redirect(
+        url_for(
+            "raw_header",
+            version_id=_encode_version_id_for_url(result.version_id),
+            absolute_path=result.absolute_path.lstrip("/"),
+        )
+    )
+
+
 @app.get("/diff/<from_version_id>...<to_version_id>/<path:absolute_path>")
 def view_header_diff(from_version_id: str, to_version_id: str, absolute_path: str) -> str:
     query_started_at = time.perf_counter()
@@ -623,6 +642,30 @@ def view_header(version_id: str, absolute_path: str) -> str:
         timings_ms=timings_ms,
     )
     return html
+
+
+@app.get("/raw/<version_id>/<path:absolute_path>")
+def raw_header(version_id: str, absolute_path: str) -> Response:
+    decoded_version_id = _decode_version_id_from_url(version_id)
+    normalized_path = _normalize_absolute_path(absolute_path)
+    if not normalized_path:
+        abort(404)
+
+    version_num = repo.get_version_num(decoded_version_id)
+    if version_num is None:
+        abort(404)
+
+    content_ref = repo.get_file_content_ref(version_num=version_num, absolute_path=normalized_path)
+    if content_ref is None:
+        abort(404)
+
+    source_bytes = store.read_slice(
+        object_key=content_ref.pack_object_key,
+        offset=content_ref.pack_offset,
+        length=content_ref.pack_length,
+    )
+    source_text = source_bytes.decode("utf-8", errors="replace")
+    return Response(source_text, mimetype="text/plain")
 
 
 @app.errorhandler(404)
