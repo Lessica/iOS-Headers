@@ -22,7 +22,7 @@ Disallow: /
 User-agent: ClaudeBot
 Allow: /tree/
 Disallow: /view/
-Crawl-delay: 2
+Crawl-delay: 10
 
 
 # --------------------------------------------------
@@ -71,20 +71,12 @@ Disallow: /
 # Meta / Facebook Crawlers
 # --------------------------------------------------
 
-User-agent: meta-externalads
-Disallow: /
-
 User-agent: meta-externalagent
 Disallow: /
 
-User-agent: meta-externalfetcher
-Disallow: /
-
 User-agent: meta-webindexer
-Disallow: /
-
-User-agent: facebookcatalog
-Disallow: /
+Allow: /
+Crawl-delay: 10
 
 User-agent: facebookexternalhit
 Disallow: /
