@@ -71,12 +71,23 @@ Disallow: /
 # Meta / Facebook Crawlers
 # --------------------------------------------------
 
+User-agent: meta-externalads
+Disallow: /
+
 User-agent: meta-externalagent
+Disallow: /
+
+User-agent: meta-externalfetcher
+Disallow: /
+
+User-agent: meta-webindexer
+Disallow: /
+
+User-agent: facebookcatalog
 Disallow: /
 
 User-agent: facebookexternalhit
 Disallow: /
-
 
 # --------------------------------------------------
 # Miscellaneous Bots
