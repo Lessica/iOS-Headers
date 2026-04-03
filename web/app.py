@@ -179,7 +179,7 @@ def inject_seo_metadata() -> dict[str, Any]:
         directory_name = _extract_directory_name(absolute_path)
         directory_title = _format_directory_name_for_display(directory_name) if directory_name else ""
         if directory_title:
-            seo_title = f"{file_name} · Compare · {directory_title} · iOS Headers"
+            seo_title = f"{file_name} · {directory_title} · Compare · iOS Headers"
         else:
             seo_title = f"{file_name} · Compare · iOS Headers"
         seo_description = (
