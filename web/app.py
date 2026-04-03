@@ -54,6 +54,8 @@ CANONICAL_SITE_ORIGIN = "https://headers.82flex.com"
 SITEMAP_CACHE_KEY = "xml:sitemap:v1"
 SITEMAP_CACHE_TTL_SECONDS = 1800
 SITEMAP_DIRECTORY_FETCH_LIMIT = 100000
+STRUCTURED_DATA_ITEMLIST_LIMIT = 20
+QUERY_PARAM_SANITIZE_RE = re.compile(r"[^0-9A-Za-z/._-]+")
 SEARCH_SCOPE_NOTICE = (
     "Search supports directory names, framework names, and Objective-C header file names only; "
     "property, ivar, and method search is unavailable."
@@ -112,20 +114,21 @@ def inject_seo_metadata() -> dict[str, Any]:
     args = request.args
     view_args = request.view_args or {}
 
-    query = args.get("q", "").strip()
+    query = _sanitize_query_param(args.get("q", ""))
     selected_dir_name = ""
     if endpoint == "directory_page":
         selected_dir_name = unquote(str(view_args.get("directory_name", ""))).strip()
 
-    has_pagination_cursor = bool(args.get("cursor", "").strip())
+    has_pagination_cursor = bool(_sanitize_query_param(args.get("cursor", "")))
+    has_search_query = bool(query)
     seo_robots = "index, follow"
     if endpoint == "view_header_diff":
         seo_robots = "noindex, nofollow"
-    elif endpoint in {"search_page", "directory_page"} and has_pagination_cursor:
+    elif endpoint in {"search_page", "directory_page"} and (has_search_query or has_pagination_cursor):
         seo_robots = "noindex, follow"
 
     canonical_query: dict[str, str] = {}
-    if query:
+    if query and endpoint in {"search_page", "directory_page"}:
         canonical_query["q"] = query
 
     if endpoint == "search_page":
@@ -144,7 +147,7 @@ def inject_seo_metadata() -> dict[str, Any]:
     seo_og_type = "website"
 
     if endpoint == "search_page" and query:
-        seo_title = f"Search: {query} · iOS Headers"
+        seo_title = f"{query} · Search · iOS Headers"
         seo_description = (
             f"Search iOS SDK headers for {query} across directories and versions. "
             f"{SEARCH_SCOPE_NOTICE}"
@@ -159,7 +162,12 @@ def inject_seo_metadata() -> dict[str, Any]:
     elif endpoint == "view_header":
         absolute_path = _normalize_absolute_path(str(view_args.get("absolute_path", "")))
         file_name = os.path.basename(absolute_path.rstrip("/")) or absolute_path or "Header"
-        seo_title = f"{file_name} · iOS Headers"
+        directory_name = _extract_directory_name(absolute_path)
+        directory_title = _format_directory_name_for_display(directory_name) if directory_name else ""
+        if directory_title:
+            seo_title = f"{file_name} · {directory_title} · iOS Headers"
+        else:
+            seo_title = f"{file_name} · iOS Headers"
         seo_description = (
             f"View {absolute_path} with version history, source lines, and symbol-aware navigation. "
             f"{SEARCH_SCOPE_NOTICE}"
@@ -167,7 +175,13 @@ def inject_seo_metadata() -> dict[str, Any]:
         seo_og_type = "article"
     elif endpoint == "view_header_diff":
         absolute_path = _normalize_absolute_path(str(view_args.get("absolute_path", "")))
-        seo_title = f"{absolute_path} · Compare · iOS Headers"
+        file_name = os.path.basename(absolute_path.rstrip("/")) or absolute_path or "Header"
+        directory_name = _extract_directory_name(absolute_path)
+        directory_title = _format_directory_name_for_display(directory_name) if directory_name else ""
+        if directory_title:
+            seo_title = f"{file_name} · Compare · {directory_title} · iOS Headers"
+        else:
+            seo_title = f"{file_name} · Compare · iOS Headers"
         seo_description = (
             f"Compare header changes for {absolute_path} across iOS SDK versions. "
             f"{SEARCH_SCOPE_NOTICE}"
@@ -229,14 +243,14 @@ def inject_seo_metadata() -> dict[str, Any]:
 
 @app.get("/")
 def search_page() -> str:
-    raw_query = request.args.get("q", "")
-    raw_selected_dir_name = request.args.get("dir", "")
-    raw_directory_cursor = request.args.get("cursor", "")
-    raw_directory_direction = request.args.get("direction", "")
+    raw_query = _sanitize_query_param(request.args.get("q", ""))
+    raw_selected_dir_name = _sanitize_query_param(request.args.get("dir", ""))
+    raw_directory_cursor = _sanitize_query_param(request.args.get("cursor", ""))
+    raw_directory_direction = _sanitize_query_param(request.args.get("direction", ""))
 
-    query = raw_query.strip()
-    selected_dir_name = raw_selected_dir_name.strip()
-    directory_cursor = raw_directory_cursor.strip() or None
+    query = raw_query
+    selected_dir_name = raw_selected_dir_name
+    directory_cursor = raw_directory_cursor or None
     directory_direction = _normalize_directory_direction(raw_directory_direction)
     directory_page_size = DEFAULT_DIRECTORY_PAGE_SIZE
     has_effective_args = _has_effective_search_args(
@@ -262,12 +276,12 @@ def directory_page(directory_name: str) -> str:
     if not selected_dir_name:
         abort(404)
 
-    raw_query = request.args.get("q", "")
-    raw_directory_cursor = request.args.get("cursor", "")
-    raw_directory_direction = request.args.get("direction", "")
+    raw_query = _sanitize_query_param(request.args.get("q", ""))
+    raw_directory_cursor = _sanitize_query_param(request.args.get("cursor", ""))
+    raw_directory_direction = _sanitize_query_param(request.args.get("direction", ""))
 
-    query = raw_query.strip()
-    directory_cursor = raw_directory_cursor.strip() or None
+    query = raw_query
+    directory_cursor = raw_directory_cursor or None
     directory_direction = _normalize_directory_direction(raw_directory_direction)
     directory_page_size = DEFAULT_DIRECTORY_PAGE_SIZE
     has_effective_args = _has_effective_search_args(
@@ -396,6 +410,13 @@ def _render_search_page(
     ]
 
     query_elapsed_ms = int((time.perf_counter() - query_started_at) * 1000)
+    seo_structured_data_extra = _build_search_geo_structured_data(
+        query=query,
+        selected_dir_name=selected_dir_name,
+        directory_hits=search_result.directory_hits,
+        owner_entries=owner_entries,
+        directory_file_entries=directory_file_entries,
+    )
 
     html = render_template(
         "search.html",
@@ -420,6 +441,7 @@ def _render_search_page(
         owner_hits_limit=OWNER_HITS_LIMIT,
         query_elapsed_ms=query_elapsed_ms,
         show_query_elapsed_ms=settings.show_query_elapsed_ms,
+        seo_structured_data_extra=seo_structured_data_extra,
     )
 
     if use_redis_cache:
@@ -467,7 +489,7 @@ def raw_latest_header(absolute_path: str) -> Any:
     if result is None:
         abort(404)
 
-    requested_format = request.args.get("format", "").strip().lower()
+    requested_format = _sanitize_query_param(request.args.get("format", "")).lower()
     route_args: dict[str, Any] = {
         "version_id": _encode_version_id_for_url(result.version_id),
         "absolute_path": result.absolute_path.lstrip("/"),
@@ -678,7 +700,7 @@ def raw_header(version_id: str, absolute_path: str) -> Response:
     )
     source_text = source_bytes.decode("utf-8", errors="replace")
 
-    output_format = request.args.get("format", "").strip().lower()
+    output_format = _sanitize_query_param(request.args.get("format", "")).lower()
     if output_format == "logos":
         source_text = _convert_header_to_logos(source_text)
 
@@ -687,11 +709,22 @@ def raw_header(version_id: str, absolute_path: str) -> Response:
 
 @app.errorhandler(404)
 def not_found(_: Exception) -> tuple[str, int]:
+    not_found_title = "Not Found · iOS Headers"
+    not_found_description = (
+        "This path is unavailable on iOS Headers. "
+        "Explore iOS SDK headers by directory, framework, and Objective-C header file name."
+    )
+    not_found_canonical_url = _canonical_url(url_for("search_page"))
     return (
         render_template(
             "not_found.html",
+            seo_title=not_found_title,
+            seo_description=not_found_description,
             seo_robots="noindex, nofollow",
-            seo_canonical_url=_canonical_url(url_for("search_page")),
+            seo_canonical_url=not_found_canonical_url,
+            seo_og_title=not_found_title,
+            seo_og_description=not_found_description,
+            seo_og_url=not_found_canonical_url,
         ),
         404,
     )
@@ -852,6 +885,127 @@ def _build_owner_search_entry(version_id: str, absolute_path: str, version_ids: 
         "version_ids": visible_version_ids,
         "remaining_versions_count": remaining_versions_count,
     }
+
+
+def _build_search_geo_structured_data(
+    query: str,
+    selected_dir_name: str,
+    directory_hits: list[tuple[str, str]],
+    owner_entries: list[dict[str, Any]],
+    directory_file_entries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if query and not selected_dir_name:
+        return _build_global_search_item_lists(query, directory_hits, owner_entries)
+    if selected_dir_name:
+        return _build_directory_item_list(selected_dir_name, directory_file_entries)
+    return []
+
+
+def _build_global_search_item_lists(
+    query: str,
+    directory_hits: list[tuple[str, str]],
+    owner_entries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    schemas: list[dict[str, Any]] = []
+
+    directory_elements: list[dict[str, Any]] = []
+    for index, (directory_name, _sample_dir_path) in enumerate(directory_hits[:STRUCTURED_DATA_ITEMLIST_LIMIT], start=1):
+        item_url = _canonical_url(url_for("directory_page", directory_name=directory_name))
+        item_name = _format_directory_name_for_display(directory_name) or directory_name
+        directory_elements.append(
+            {
+                "@type": "ListItem",
+                "position": index,
+                "name": item_name,
+                "url": item_url,
+            }
+        )
+    if directory_elements:
+        schemas.append(
+            {
+                "@context": "https://schema.org",
+                "@type": "ItemList",
+                "name": f"Directory matches for {query}",
+                "numberOfItems": len(directory_hits),
+                "itemListElement": directory_elements,
+            }
+        )
+
+    owner_elements: list[dict[str, Any]] = []
+    for index, entry in enumerate(owner_entries[:STRUCTURED_DATA_ITEMLIST_LIMIT], start=1):
+        absolute_path = str(entry.get("absolute_path", "")).strip()
+        version_id = str(entry.get("version_id", "")).strip()
+        if not absolute_path or not version_id:
+            continue
+        item_url = _canonical_url(
+            url_for(
+                "view_header",
+                version_id=_encode_version_id_for_url(version_id),
+                absolute_path=absolute_path.lstrip("/"),
+            )
+        )
+        item_name = str(entry.get("file_name", "")).strip() or absolute_path
+        owner_elements.append(
+            {
+                "@type": "ListItem",
+                "position": index,
+                "name": item_name,
+                "url": item_url,
+            }
+        )
+    if owner_elements:
+        schemas.append(
+            {
+                "@context": "https://schema.org",
+                "@type": "ItemList",
+                "name": f"Header matches for {query}",
+                "numberOfItems": len(owner_entries),
+                "itemListElement": owner_elements,
+            }
+        )
+
+    return schemas
+
+
+def _build_directory_item_list(
+    selected_dir_name: str,
+    directory_file_entries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    elements: list[dict[str, Any]] = []
+    for index, entry in enumerate(directory_file_entries[:STRUCTURED_DATA_ITEMLIST_LIMIT], start=1):
+        absolute_path = str(entry.get("absolute_path", "")).strip()
+        version_id = str(entry.get("version_id", "")).strip()
+        if not absolute_path or not version_id:
+            continue
+        item_url = _canonical_url(
+            url_for(
+                "view_header",
+                version_id=_encode_version_id_for_url(version_id),
+                absolute_path=absolute_path.lstrip("/"),
+            )
+        )
+        item_name = str(entry.get("file_name", "")).strip() or absolute_path
+        elements.append(
+            {
+                "@type": "ListItem",
+                "position": index,
+                "name": item_name,
+                "url": item_url,
+            }
+        )
+    if not elements:
+        return []
+
+    display_dir_name = _format_directory_name_for_display(selected_dir_name) or selected_dir_name
+    return [
+        {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            "name": f"Files in {display_dir_name}",
+            "numberOfItems": len(directory_file_entries),
+            "itemListElement": elements,
+        }
+    ]
 
 
 def _extract_framework_name(path_segments: list[str]) -> str | None:
@@ -1430,6 +1584,16 @@ def _search_cache_key(
     )
     digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
     return f"html:search:{digest}"
+
+
+def _sanitize_query_param(raw_value: str | None) -> str:
+    if raw_value is None:
+        return ""
+
+    value = raw_value.strip()
+    if not value:
+        return ""
+    return QUERY_PARAM_SANITIZE_RE.sub("", value)
 
 
 def _normalize_directory_direction(raw_direction: str) -> str:

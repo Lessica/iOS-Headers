@@ -1,8 +1,8 @@
 User-agent: *
 Allow: /
 Disallow: /diff/
+Disallow: /raw/
 Sitemap: https://headers.82flex.com/sitemap.xml
-
 
 # --------------------------------------------------
 # OpenAI
@@ -14,16 +14,12 @@ Allow: /
 User-agent: GPTBot
 Disallow: /
 
-
 # --------------------------------------------------
 # Anthropic
 # --------------------------------------------------
 
 User-agent: ClaudeBot
-Allow: /tree/
-Disallow: /view/
-Crawl-delay: 10
-
+Disallow: /
 
 # --------------------------------------------------
 # Perplexity
@@ -31,7 +27,6 @@ Crawl-delay: 10
 
 User-agent: PerplexityBot
 Allow: /
-
 
 # --------------------------------------------------
 # Search Engines
@@ -49,7 +44,6 @@ Allow: /
 User-agent: DuckDuckBot
 Allow: /
 
-
 # --------------------------------------------------
 # Pure SEO
 # --------------------------------------------------
@@ -66,7 +60,6 @@ Disallow: /
 User-agent: DotBot
 Disallow: /
 
-
 # --------------------------------------------------
 # Meta / Facebook Crawlers
 # --------------------------------------------------
@@ -75,8 +68,7 @@ User-agent: meta-externalagent
 Disallow: /
 
 User-agent: meta-webindexer
-Allow: /
-Crawl-delay: 10
+Disallow: /
 
 User-agent: facebookexternalhit
 Disallow: /
@@ -90,4 +82,3 @@ Disallow: /
 
 User-agent: CCBot
 Disallow: /
-

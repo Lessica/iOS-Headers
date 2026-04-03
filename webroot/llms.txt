@@ -1,23 +1,66 @@
-# iOS Headers - AI Access Guidance
+# iOS Headers - LLM Access Guide
 
 Site: https://headers.82flex.com/
 Purpose: Explore iOS SDK header files across versions.
+Primary language: English (UI and content).
+
+## Canonical Entry Points
+- Home / search: /?q=<query>
+- Directory listing: /tree/<directory_name>
+- File view: /view/<version_id>/<absolute_path>
+- File view (latest): /view/latest/<absolute_path>
+- Source text: /raw/<version_id>/<absolute_path>
+
+## URL Parameter Rules
+- Query parameters are sanitized server-side.
+- Allowed characters: 0-9 A-Z a-z / . _ -
+- Unsupported characters are removed before processing.
+- Relevant query params:
+  - q
+  - dir
+  - cursor
+  - direction
+  - format
 
 ## Search Scope (Important)
-The site search only supports:
+Search supports:
 - Directory names
 - Framework names
 - Objective-C header file names
 
-The site search does NOT support:
+Search does NOT support:
 - property names
 - ivar names
 - method names
 - symbol-level full-text code search
 
-## Suggested Usage
-- Prefer direct file URLs when available: /view/<version_id>/<absolute_path>
-- Use /tree/<directory_name> to navigate directories and list files
-	- directory_name format: parent_dir/dir_name (last 2 path segments)
-	- examples: CFNetwork.framework/CFNetwork, libexec/backboardd
-- Avoid repeated retries for property/ivar/method queries because they are unsupported
+## Recommended Retrieval Strategy
+1. If you know the exact file path, prefer:
+   - /view/latest/<absolute_path>
+2. If not, locate the directory first:
+   - /tree/<directory_name>
+3. Then open a specific versioned file:
+   - /view/<version_id>/<absolute_path>
+4. Only use /raw when plain text output is required.
+
+## Directory Name Format
+- directory_name uses the last 2 path segments: parent_dir/dir_name
+- Examples:
+  - CFNetwork.framework/CFNetwork
+  - Foundation.framework/Foundation
+  - libexec/backboardd
+
+## Practical Examples
+- /?q=UIView
+- /tree/CFNetwork.framework/CFNetwork
+- /view/17.0_21A329/System/Library/Frameworks/UIKit.framework/Headers/UIView.h
+- /raw/17.0_21A329/System/Library/Frameworks/UIKit.framework/Headers/UIView.h
+
+## Freshness Notes
+- The page shows an "Indexed snapshot" version label on result pages.
+- Use that snapshot label when describing recency in summaries.
+
+## Citation Guidance
+- Prefer citing canonical view URLs:
+  - /view/<version_id>/<absolute_path>
+- Avoid citing diff pages as primary references.

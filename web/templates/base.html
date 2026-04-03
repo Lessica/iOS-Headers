@@ -17,11 +17,14 @@
   <link rel="alternate" hreflang="{{ seo_hreflang }}" href="{{ seo_canonical_url }}">
   <link rel="alternate" hreflang="x-default" href="{{ seo_canonical_url }}">
   <meta name="google-adsense-account" content="ca-pub-5658277191043916">
-  <title>{% block title %}iOS Headers{% endblock %}</title>
+  <title>{% block title %}{{ seo_title }}{% endblock %}</title>
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5658277191043916" crossorigin="anonymous"></script>
   <link rel="stylesheet" href="{{ url_for('assets_file', asset_path='css/app.css') }}">
   {% block head_meta_extra %}{% endblock %}
   {% for schema in seo_structured_data %}
+  <script type="application/ld+json">{{ schema | tojson }}</script>
+  {% endfor %}
+  {% for schema in seo_structured_data_extra | default([]) %}
   <script type="application/ld+json">{{ schema | tojson }}</script>
   {% endfor %}
 </head>
