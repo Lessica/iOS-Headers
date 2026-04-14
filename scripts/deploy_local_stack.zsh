@@ -31,7 +31,7 @@ wait_http_ok() {
   local max_try="${3:-60}"
   local i=1
   while (( i <= max_try )); do
-    if curl -fsS "$url" >/dev/null 2>&1; then
+    if curl --noproxy '*' -fsS "$url" >/dev/null 2>&1; then
       echo "$name is healthy"
       return 0
     fi
@@ -132,7 +132,7 @@ check() {
   compose exec -T clickhouse clickhouse-client --query "SELECT 1" | grep -q '^1$'
   echo "clickhouse ping ok"
 
-  curl -fsS "http://127.0.0.1:${minio_port}/minio/health/live" >/dev/null
+  curl --noproxy '*' -fsS "http://127.0.0.1:${minio_port}/minio/health/live" >/dev/null
   echo "minio health ok"
 
   compose exec -T redis redis-cli ping | grep -q PONG
