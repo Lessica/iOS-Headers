@@ -55,7 +55,7 @@ SITEMAP_CACHE_KEY = "xml:sitemap:v1"
 SITEMAP_CACHE_TTL_SECONDS = 1800
 SITEMAP_DIRECTORY_FETCH_LIMIT = 100000
 STRUCTURED_DATA_ITEMLIST_LIMIT = 20
-QUERY_PARAM_SANITIZE_RE = re.compile(r"[^0-9A-Za-z/._-]+")
+QUERY_PARAM_SANITIZE_RE = re.compile(r"[^0-9A-Za-z/._ -]+")
 SEARCH_SCOPE_NOTICE = (
     "Search supports directory names, framework names, and Objective-C header file names only; "
     "property, ivar, and method search is unavailable."

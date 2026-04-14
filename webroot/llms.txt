@@ -13,7 +13,7 @@ Primary language: English (UI and content).
 
 ## URL Parameter Rules
 - Query parameters are sanitized server-side.
-- Allowed characters: 0-9 A-Z a-z / . _ -
+- Allowed characters: 0-9 A-Z a-z space(%20) / . _ -
 - Unsupported characters are removed before processing.
 - Relevant query params:
   - q
