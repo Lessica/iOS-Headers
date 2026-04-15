@@ -44,6 +44,9 @@ Allow: /
 User-agent: DuckDuckBot
 Allow: /
 
+User-agent: Baiduspider
+Allow: /
+
 # --------------------------------------------------
 # Pure SEO
 # --------------------------------------------------

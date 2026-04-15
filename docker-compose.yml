@@ -27,6 +27,8 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+    mem_limit: 256m
+    mem_reservation: 160m
 
   nginx:
     image: nginx:1.27-alpine
@@ -63,6 +65,8 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+    mem_limit: 128m
+    mem_reservation: 64m
 
   frpc:
     image: ghcr.io/fatedier/frpc:v0.61.2
@@ -125,6 +129,8 @@ services:
       timeout: 5s
       retries: 20
       start_period: 20s
+    mem_limit: 4096m
+    mem_reservation: 1792m
 
   redis:
     image: redis:7-alpine
@@ -147,6 +153,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 20
+    mem_limit: 128m
+    mem_reservation: 96m
 
   minio:
     image: minio/minio:latest
@@ -164,6 +172,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+    mem_limit: 320m
+    mem_reservation: 192m
 
 networks:
   default:
