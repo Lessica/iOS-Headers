@@ -258,6 +258,13 @@ sync_env() {
   local env_tmp
   env_tmp="$(mktemp)"
   cp "$ENV_FILE" "$env_tmp"
+
+  if grep -q '^FRP_SERVER_ADDR=' "$env_tmp"; then
+    sed -i'' -e "s#^FRP_SERVER_ADDR=.*#FRP_SERVER_ADDR=#" "$env_tmp"
+  else
+    printf '\nFRP_SERVER_ADDR=\n' >> "$env_tmp"
+  fi
+
   if grep -q '^STACK_DATA_DIR=' "$env_tmp"; then
     sed -i'' -e "s#^STACK_DATA_DIR=.*#STACK_DATA_DIR=$REMOTE_DATA_DIR#" "$env_tmp"
   else

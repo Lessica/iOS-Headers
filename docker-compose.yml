@@ -68,7 +68,7 @@ services:
     image: ghcr.io/fatedier/frpc:v0.61.2
     container_name: ${COMPOSE_PROJECT_NAME:-ios_headers}_frpc
     profiles: ["tunnel"]
-    restart: unless-stopped
+    restart: on-failure
     depends_on:
       nginx:
         condition: service_healthy
@@ -83,7 +83,10 @@ services:
       - -ec
     command:
       - |
-        [ -n "$$FRP_SERVER_ADDR" ] || { echo "FRP_SERVER_ADDR is required"; exit 1; }
+        if [ -z "$$FRP_SERVER_ADDR" ]; then
+          echo "FRP_SERVER_ADDR is empty; frpc disabled"
+          exit 0
+        fi
         [ -n "$$FRP_TOKEN" ] || { echo "FRP_TOKEN is required"; exit 1; }
         cat >/tmp/frpc.toml <<EOF
         serverAddr = "$$FRP_SERVER_ADDR"
