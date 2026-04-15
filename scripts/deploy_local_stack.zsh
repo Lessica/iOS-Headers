@@ -72,9 +72,6 @@ up() {
   require_tools
   compose up -d
 
-  local minio_port
-  minio_port="$(get_env_value "MINIO_API_PORT" "19001")"
-
   local i=1
   while (( i <= 60 )); do
     if compose exec -T clickhouse clickhouse-client --query "SELECT 1" >/dev/null 2>&1; then
@@ -89,7 +86,8 @@ up() {
     return 1
   fi
 
-  wait_http_ok "minio" "http://127.0.0.1:${minio_port}/minio/health/live"
+  compose exec -T minio curl -fsS "http://localhost:9000/minio/health/live" >/dev/null
+  echo "minio is healthy"
 
   compose exec -T redis redis-cli ping | grep -q PONG
   echo "redis is healthy"
@@ -126,13 +124,10 @@ logs() {
 
 check() {
   require_tools
-  local minio_port
-  minio_port="$(get_env_value "MINIO_API_PORT" "19001")"
-
   compose exec -T clickhouse clickhouse-client --query "SELECT 1" | grep -q '^1$'
   echo "clickhouse ping ok"
 
-  curl --noproxy '*' -fsS "http://127.0.0.1:${minio_port}/minio/health/live" >/dev/null
+  compose exec -T minio curl -fsS "http://localhost:9000/minio/health/live" >/dev/null
   echo "minio health ok"
 
   compose exec -T redis redis-cli ping | grep -q PONG

@@ -112,10 +112,12 @@
 
 ## 端点
 
-- ClickHouse Native：`127.0.0.1:19000`
-- MinIO API：`127.0.0.1:19001`
-- Redis：`127.0.0.1:16379`
 - Web（Nginx）：`127.0.0.1:18080`
+- ClickHouse / MinIO / Redis：仅在 Compose 内部网络暴露，不再绑定宿主机端口
+- 如需检查内部服务，使用 `docker compose exec`：
+  - `docker compose --env-file .env -f docker-compose.yml exec -T clickhouse clickhouse-client --query "SELECT 1"`
+  - `docker compose --env-file .env -f docker-compose.yml exec -T minio curl -fsS http://localhost:9000/minio/health/live`
+  - `docker compose --env-file .env -f docker-compose.yml exec -T redis redis-cli ping`
 
 ## Redis 运行策略（缓存优先）
 
