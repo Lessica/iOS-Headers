@@ -10,8 +10,20 @@ Sitemap: https://headers.82flex.com/sitemap.xml
 
 User-agent: OAI-SearchBot
 Allow: /
+Crawl-delay: 10
 
 User-agent: GPTBot
+Disallow: /
+
+# --------------------------------------------------
+# Apple
+# --------------------------------------------------
+
+User-agent: Applebot
+Allow: /
+Crawl-delay: 10
+
+User-agent: Applebot-Extended
 Disallow: /
 
 # --------------------------------------------------
@@ -27,6 +39,7 @@ Disallow: /
 
 User-agent: PerplexityBot
 Allow: /
+Crawl-delay: 10
 
 # --------------------------------------------------
 # Search Engines
@@ -34,18 +47,19 @@ Allow: /
 
 User-agent: Googlebot
 Allow: /
+Crawl-delay: 10
 
 User-agent: Bingbot
 Allow: /
-
-User-agent: Applebot
-Allow: /
+Crawl-delay: 10
 
 User-agent: DuckDuckBot
 Allow: /
+Crawl-delay: 10
 
 User-agent: Baiduspider
 Allow: /
+Crawl-delay: 10
 
 # --------------------------------------------------
 # Pure SEO
