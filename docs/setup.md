@@ -142,6 +142,14 @@ standalone 扫描器只输出包含 Objective-C 定义段的 `MH_EXECUTE`、`MH_
 - 含义：优先保障读写延迟与命中率，内存达到上限后按 LRU 淘汰旧 key。
 - 如需恢复持久化（更高数据保留）：将 `REDIS_APPENDONLY` 改为 `yes` 后重启 Redis 服务。
 
+## 日志容量策略
+
+- Compose 服务使用 Docker `json-file` 日志驱动，默认每个容器保留 3 个、每个最大 20MiB 的日志文件。
+- 可通过 `.env` 的 `DOCKER_LOG_MAX_SIZE` 和 `DOCKER_LOG_MAX_FILES` 调整容器日志上限。
+- ClickHouse 普通服务日志级别为 `information`，文件日志最多保留 3 个、每个最大 50MiB。
+- ClickHouse 系统日志表按用途保留 3、7 或 14 天；指标采样间隔为 10 秒。
+- 远端主机可安装 `deploy/systemd/journald.conf.d/ios-headers-limits.conf`，将 journal 上限设为 256MiB，并至少保留 2GiB 磁盘空闲空间。
+
 ## 内网穿透（FRP）
 
 本项目已在 Compose 中提供可选 `frpc` 容器（profile: `tunnel`），用于把本机 `nginx:80` 通过公网服务器暴露出去。

@@ -1,3 +1,9 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-20m}"
+    max-file: "${DOCKER_LOG_MAX_FILES:-3}"
+
 services:
   web:
     build:
@@ -29,6 +35,7 @@ services:
       start_period: 20s
     mem_limit: 256m
     mem_reservation: 160m
+    logging: *default-logging
 
   nginx:
     image: nginx:1.27-alpine
@@ -67,6 +74,7 @@ services:
       start_period: 10s
     mem_limit: 128m
     mem_reservation: 64m
+    logging: *default-logging
 
   frpc:
     image: ghcr.io/fatedier/frpc:v0.61.2
@@ -106,6 +114,7 @@ services:
         remotePort = $${FRP_REMOTE_PORT}
         EOF
         exec frpc -c /tmp/frpc.toml
+    logging: *default-logging
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
@@ -119,6 +128,7 @@ services:
       - ${STACK_DATA_DIR:-./data}/clickhouse:/var/lib/clickhouse
       - ./clickhouse/init:/docker-entrypoint-initdb.d
       - ./clickhouse/config.d/named_collections.xml:/etc/clickhouse-server/config.d/named_collections.xml:ro
+      - ./clickhouse/config.d/system_logs.xml:/etc/clickhouse-server/config.d/system_logs.xml:ro
     ulimits:
       nofile:
         soft: 262144
@@ -131,6 +141,7 @@ services:
       start_period: 20s
     mem_limit: 4096m
     mem_reservation: 1792m
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
@@ -155,6 +166,7 @@ services:
       retries: 20
     mem_limit: 128m
     mem_reservation: 96m
+    logging: *default-logging
 
   minio:
     image: minio/minio:latest
@@ -174,6 +186,7 @@ services:
       retries: 20
     mem_limit: 320m
     mem_reservation: 192m
+    logging: *default-logging
 
 networks:
   default:
