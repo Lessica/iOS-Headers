@@ -2,11 +2,32 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 import struct
 from typing import BinaryIO
 
+
 MH_EXECUTE = 0x2
+MH_DYLIB = 0x6
+MH_BUNDLE = 0x8
+
+SUPPORTED_FILE_TYPES = {
+    MH_EXECUTE: "MH_EXECUTE",
+    MH_DYLIB: "MH_DYLIB",
+    MH_BUNDLE: "MH_BUNDLE",
+}
+
+LC_SEGMENT = 0x1
+LC_SEGMENT_64 = 0x19
+
+OBJC_DEFINITION_SECTIONS = {
+    b"__objc_classlist",
+    b"__objc_catlist",
+    b"__objc_protolist",
+    b"__objc_nlclslist",
+    b"__objc_nlcatlist",
+}
 
 MACHO32_BE = b"\xfe\xed\xfa\xce"
 MACHO32_LE = b"\xce\xfa\xed\xfe"
@@ -18,20 +39,18 @@ FAT32_LE = b"\xbe\xba\xfe\xca"
 FAT64_BE = b"\xca\xfe\xba\xbf"
 FAT64_LE = b"\xbf\xba\xfe\xca"
 
+MAX_FAT_ARCHES = 4096
+MAX_LOAD_COMMAND_BYTES = 256 * 1024 * 1024
 
-def _is_thin_macho_executable_from_header(header: bytes) -> bool:
-    if len(header) < 16:
-        return False
 
-    magic = header[:4]
-    if magic in (MACHO32_LE, MACHO64_LE):
-        filetype = struct.unpack("<I", header[12:16])[0]
-    elif magic in (MACHO32_BE, MACHO64_BE):
-        filetype = struct.unpack(">I", header[12:16])[0]
-    else:
-        return False
+@dataclass(frozen=True)
+class MachOSlice:
+    filetype: int
+    has_objc_definitions: bool
 
-    return filetype == MH_EXECUTE
+    @property
+    def is_supported(self) -> bool:
+        return self.filetype in SUPPORTED_FILE_TYPES
 
 
 def _read_exact(file_obj: BinaryIO, offset: int, size: int) -> bytes | None:
@@ -42,77 +61,172 @@ def _read_exact(file_obj: BinaryIO, offset: int, size: int) -> bytes | None:
     return data
 
 
-def _is_fat_macho_executable(file_obj: BinaryIO, first4: bytes) -> bool:
-    if first4 in (FAT32_BE, FAT64_BE):
-        endian = ">"
-    elif first4 in (FAT32_LE, FAT64_LE):
-        endian = "<"
+def _decode_thin_header(header: bytes) -> tuple[str, bool] | None:
+    magic = header[:4]
+    if magic == MACHO32_LE:
+        return ("<", False)
+    if magic == MACHO32_BE:
+        return (">", False)
+    if magic == MACHO64_LE:
+        return ("<", True)
+    if magic == MACHO64_BE:
+        return (">", True)
+    return None
+
+
+def _section_names(
+    command: bytes,
+    *,
+    endian: str,
+    is_64_bit: bool,
+) -> list[bytes]:
+    if is_64_bit:
+        if len(command) < 72:
+            return []
+        section_count = struct.unpack(f"{endian}I", command[64:68])[0]
+        section_offset = 72
+        section_size = 80
     else:
-        return False
+        if len(command) < 56:
+            return []
+        section_count = struct.unpack(f"{endian}I", command[48:52])[0]
+        section_offset = 56
+        section_size = 68
 
-    is_fat64 = first4 in (FAT64_BE, FAT64_LE)
-
-    nfat_raw = _read_exact(file_obj, 4, 4)
-    if nfat_raw is None:
-        return False
-    nfat_arch = struct.unpack(f"{endian}I", nfat_raw)[0]
-
-    if nfat_arch == 0 or nfat_arch > 4096:
-        return False
-
-    if is_fat64:
-        arch_size = 24
-    else:
-        arch_size = 20
-
-    arch_table = _read_exact(file_obj, 8, nfat_arch * arch_size)
-    if arch_table is None:
-        return False
-
-    for index in range(nfat_arch):
-        base = index * arch_size
-
-        if is_fat64:
-            offset = struct.unpack(
-                f"{endian}Q", arch_table[base + 8: base + 16])[0]
-        else:
-            offset = struct.unpack(
-                f"{endian}I", arch_table[base + 8: base + 12])[0]
-
-        header = _read_exact(file_obj, offset, 16)
-        if header is None:
-            continue
-
-        if _is_thin_macho_executable_from_header(header):
-            return True
-
-    return False
+    names: list[bytes] = []
+    for index in range(section_count):
+        offset = section_offset + index * section_size
+        if offset + section_size > len(command):
+            break
+        names.append(command[offset: offset + 16].split(b"\0", 1)[0])
+    return names
 
 
-def is_macho_executable(file_path: Path) -> bool:
+def _inspect_thin_slice(file_obj: BinaryIO, offset: int) -> MachOSlice | None:
+    base_header = _read_exact(file_obj, offset, 32)
+    if base_header is None:
+        return None
+
+    decoded = _decode_thin_header(base_header)
+    if decoded is None:
+        return None
+    endian, is_64_bit = decoded
+    header_size = 32 if is_64_bit else 28
+
+    try:
+        filetype = struct.unpack(f"{endian}I", base_header[12:16])[0]
+        command_count = struct.unpack(f"{endian}I", base_header[16:20])[0]
+        command_bytes = struct.unpack(f"{endian}I", base_header[20:24])[0]
+    except struct.error:
+        return None
+
+    if command_bytes > MAX_LOAD_COMMAND_BYTES:
+        return None
+    commands = _read_exact(file_obj, offset + header_size, command_bytes)
+    if commands is None:
+        return None
+
+    has_objc_definitions = False
+    command_offset = 0
+    try:
+        for _ in range(command_count):
+            if command_offset + 8 > len(commands):
+                break
+            command_type, command_size = struct.unpack(
+                f"{endian}II",
+                commands[command_offset: command_offset + 8],
+            )
+            if command_size < 8 or command_offset + command_size > len(commands):
+                break
+
+            is_segment = (
+                (is_64_bit and command_type == LC_SEGMENT_64)
+                or (not is_64_bit and command_type == LC_SEGMENT)
+            )
+            if is_segment:
+                command = commands[command_offset: command_offset + command_size]
+                if any(
+                    name in OBJC_DEFINITION_SECTIONS
+                    for name in _section_names(command, endian=endian, is_64_bit=is_64_bit)
+                ):
+                    has_objc_definitions = True
+                    break
+
+            command_offset += command_size
+    except struct.error:
+        return None
+
+    return MachOSlice(
+        filetype=filetype,
+        has_objc_definitions=has_objc_definitions,
+    )
+
+
+def inspect_macho(file_path: Path) -> list[MachOSlice]:
     try:
         with file_path.open("rb") as file_obj:
             first4 = file_obj.read(4)
             if len(first4) != 4:
-                return False
+                return []
 
             if first4 in (MACHO32_BE, MACHO32_LE, MACHO64_BE, MACHO64_LE):
-                rest = file_obj.read(12)
-                if len(rest) != 12:
-                    return False
-                return _is_thin_macho_executable_from_header(first4 + rest)
+                item = _inspect_thin_slice(file_obj, 0)
+                return [item] if item is not None else []
 
-            if first4 in (FAT32_BE, FAT32_LE, FAT64_BE, FAT64_LE):
-                return _is_fat_macho_executable(file_obj, first4)
+            if first4 in (FAT32_BE, FAT64_BE):
+                endian = ">"
+            elif first4 in (FAT32_LE, FAT64_LE):
+                endian = "<"
+            else:
+                return []
 
-            return False
+            is_fat64 = first4 in (FAT64_BE, FAT64_LE)
+            count_bytes = _read_exact(file_obj, 4, 4)
+            if count_bytes is None:
+                return []
+            arch_count = struct.unpack(f"{endian}I", count_bytes)[0]
+            if arch_count == 0 or arch_count > MAX_FAT_ARCHES:
+                return []
+
+            arch_size = 24 if is_fat64 else 20
+            arch_table = _read_exact(file_obj, 8, arch_count * arch_size)
+            if arch_table is None:
+                return []
+
+            slices: list[MachOSlice] = []
+            for index in range(arch_count):
+                base = index * arch_size
+                if is_fat64:
+                    slice_offset = struct.unpack(
+                        f"{endian}Q",
+                        arch_table[base + 8: base + 16],
+                    )[0]
+                else:
+                    slice_offset = struct.unpack(
+                        f"{endian}I",
+                        arch_table[base + 8: base + 12],
+                    )[0]
+                item = _inspect_thin_slice(file_obj, slice_offset)
+                if item is not None:
+                    slices.append(item)
+            return slices
     except (OSError, ValueError, struct.error):
-        return False
+        return []
+
+
+def is_class_dump_candidate(file_path: Path) -> bool:
+    return any(
+        item.is_supported and item.has_objc_definitions
+        for item in inspect_macho(file_path)
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Recursively scan a directory and print paths of Mach-O executables."
+        description=(
+            "Recursively print MH_EXECUTE, MH_DYLIB, and MH_BUNDLE files "
+            "that contain Objective-C definition sections."
+        )
     )
     parser.add_argument("path", type=Path, help="Root directory to scan")
     args = parser.parse_args()
@@ -124,7 +238,7 @@ def main() -> None:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if is_macho_executable(path):
+        if is_class_dump_candidate(path):
             print(path)
 
 

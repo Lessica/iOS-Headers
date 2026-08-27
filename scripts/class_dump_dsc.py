@@ -3,12 +3,52 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
+import json
 from pathlib import Path
 import shlex
 import subprocess
 import sys
+import threading
+import uuid
 
 DEFAULT_CACHE_RELPATH = Path("System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64e")
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    returncode: int
+    log_path: Path | None
+
+
+class AuditWriter:
+    def __init__(self, root: Path | None) -> None:
+        self.root = root
+        self.run_id = uuid.uuid4().hex
+        self._lock = threading.Lock()
+
+    def log_path(self, firmware_name: str, input_path: str) -> Path:
+        if self.root is None:
+            raise RuntimeError("Audit output is disabled")
+        digest = hashlib.sha256(input_path.encode("utf-8")).hexdigest()[:20]
+        return self.root / "logs" / self.run_id / firmware_name / f"{digest}.log"
+
+    def record(self, payload: dict[str, object]) -> None:
+        if self.root is None:
+            return
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "run_id": self.run_id,
+            **payload,
+        }
+        manifest_path = self.root / "manifest.jsonl"
+        line = json.dumps(record, ensure_ascii=False, sort_keys=True)
+        with self._lock:
+            manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            with manifest_path.open("a", encoding="utf-8") as file_obj:
+                file_obj.write(line + "\n")
 
 
 def parse_args() -> argparse.Namespace:
@@ -81,6 +121,20 @@ def parse_args() -> argparse.Namespace:
         default=1,
         help="Parallel workers for --all cache mode (default: 1)",
     )
+    parser.add_argument(
+        "--audit-root",
+        type=Path,
+        default=Path("data/class_dump_audit"),
+        help=(
+            "Directory for manifest.jsonl and retained error/warning logs "
+            "(default: data/class_dump_audit)"
+        ),
+    )
+    parser.add_argument(
+        "--no-audit",
+        action="store_true",
+        help="Disable per-target class-dump audit records",
+    )
     args = parser.parse_args()
 
     if args.all and args.firmware_name is not None:
@@ -99,13 +153,84 @@ def quote_command(parts: list[str]) -> str:
     return " ".join(shlex.quote(part) for part in parts)
 
 
-def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        check=False,
-        text=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+def run_command(command: list[str], log_path: Path | None) -> CommandResult:
+    if log_path is None:
+        result = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return CommandResult(returncode=result.returncode, log_path=None)
+
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", encoding="utf-8") as log_file:
+        result = subprocess.run(
+            command,
+            check=False,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=log_file,
+        )
+    return CommandResult(returncode=result.returncode, log_path=log_path)
+
+
+def count_headers(path: Path) -> int:
+    if not path.is_dir():
+        return 0
+    return sum(1 for item in path.rglob("*.h") if item.is_file())
+
+
+def retain_nonempty_log(result: CommandResult) -> Path | None:
+    if result.log_path is None:
+        return None
+    try:
+        if result.log_path.stat().st_size > 0:
+            return result.log_path
+    except FileNotFoundError:
+        return None
+
+    try:
+        result.log_path.unlink()
+    except FileNotFoundError:
+        return None
+
+    parent = result.log_path.parent
+    for _ in range(2):
+        try:
+            parent.rmdir()
+        except OSError:
+            break
+        parent = parent.parent
+    return None
+
+
+def audit_result(
+    audit: AuditWriter,
+    *,
+    mode: str,
+    firmware_name: str,
+    input_path: str,
+    command: list[str] | None,
+    status: str,
+    returncode: int | None,
+    header_count: int,
+    log_path: Path | None = None,
+    reason: str = "",
+) -> None:
+    audit.record(
+        {
+            "mode": mode,
+            "firmware_name": firmware_name,
+            "input_path": input_path,
+            "command": command or [],
+            "status": status,
+            "returncode": returncode,
+            "header_count": header_count,
+            "log_path": str(log_path) if log_path is not None else "",
+            "reason": reason,
+        }
     )
 
 
@@ -127,7 +252,7 @@ def resolve_targets(args: argparse.Namespace) -> list[Path]:
     return [firmware_dir]
 
 
-def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
+def run_cache_mode(args: argparse.Namespace, audit: AuditWriter) -> tuple[int, int, int, int, int]:
     ipsw_path = str(args.ipsw_path)
     output_root: Path = args.output_root
     cache_relpath: Path = args.cache_relpath
@@ -139,6 +264,7 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
 
     total = 0
     succeeded = 0
+    empty = 0
     skipped = 0
     failed = 0
 
@@ -146,6 +272,17 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
         cache_path = firmware_dir / cache_relpath
         if not cache_path.is_file():
             print(f"[SKIP] Missing cache: {cache_path}", file=sys.stderr)
+            audit_result(
+                audit,
+                mode="dyld_cache",
+                firmware_name=firmware_dir.name,
+                input_path=str(cache_path),
+                command=None,
+                status="skipped",
+                returncode=None,
+                header_count=0,
+                reason="missing input",
+            )
             return "skipped", None, firmware_dir.name
 
         # out_dir = output_root / firmware_dir.name / cache_relpath
@@ -165,13 +302,67 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
             str(cache_path),
         ]
 
-        print(f"[RUN ] {quote_command(command)}")
+        print(f"[RUN ] {quote_command(command)}", flush=True)
         if args.dry_run:
+            audit_result(
+                audit,
+                mode="dyld_cache",
+                firmware_name=firmware_dir.name,
+                input_path=str(cache_path),
+                command=command,
+                status="dry_run",
+                returncode=None,
+                header_count=0,
+            )
             return "succeeded", None, firmware_dir.name
 
-        result = run_command(command)
-        if result.returncode == 0:
+        log_path = (
+            audit.log_path(firmware_dir.name, str(cache_path))
+            if audit.root is not None
+            else None
+        )
+        result = run_command(command, log_path)
+        header_count = count_headers(out_dir)
+        if result.returncode == 0 and header_count > 0:
+            retained_log = retain_nonempty_log(result)
+            audit_result(
+                audit,
+                mode="dyld_cache",
+                firmware_name=firmware_dir.name,
+                input_path=str(cache_path),
+                command=command,
+                status="succeeded",
+                returncode=result.returncode,
+                header_count=header_count,
+                log_path=retained_log,
+            )
             return "succeeded", None, firmware_dir.name
+        if result.returncode == 0:
+            audit_result(
+                audit,
+                mode="dyld_cache",
+                firmware_name=firmware_dir.name,
+                input_path=str(cache_path),
+                command=command,
+                status="empty",
+                returncode=result.returncode,
+                header_count=0,
+                log_path=result.log_path,
+                reason="class-dump produced no headers",
+            )
+            return "empty", None, firmware_dir.name
+        audit_result(
+            audit,
+            mode="dyld_cache",
+            firmware_name=firmware_dir.name,
+            input_path=str(cache_path),
+            command=command,
+            status="failed",
+            returncode=result.returncode,
+            header_count=header_count,
+            log_path=result.log_path,
+            reason="class-dump exited with a nonzero status",
+        )
         return "failed", result.returncode, firmware_dir.name
 
     if args.all and args.workers > 1:
@@ -198,6 +389,8 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
 
                     if status == "succeeded":
                         succeeded += 1
+                    elif status == "empty":
+                        empty += 1
                     elif status == "skipped":
                         skipped += 1
                     else:
@@ -228,6 +421,8 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
             status, returncode, firmware_name = process_firmware(firmware_dir)
             if status == "succeeded":
                 succeeded += 1
+            elif status == "empty":
+                empty += 1
             elif status == "skipped":
                 skipped += 1
             else:
@@ -239,10 +434,10 @@ def run_cache_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
                 if not args.continue_on_error:
                     raise SystemExit(returncode if returncode is not None else 1)
 
-    return total, succeeded, skipped, failed
+    return total, succeeded, empty, skipped, failed
 
 
-def run_stdin_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
+def run_stdin_mode(args: argparse.Namespace, audit: AuditWriter) -> tuple[int, int, int, int, int]:
     ipsw_path = str(args.ipsw_path)
     output_root: Path = args.output_root
     firmwares_root_abs = args.firmwares_root.resolve()
@@ -253,10 +448,11 @@ def run_stdin_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
     lines = [line.strip() for line in sys.stdin if line.strip()]
     lines = [line for line in lines if "/tmp/" not in line]
     if not lines:
-        raise SystemExit("No executable paths received from stdin")
+        raise SystemExit("No Mach-O paths received from stdin")
 
     total = 0
     succeeded = 0
+    empty = 0
     skipped = 0
     failed = 0
 
@@ -290,7 +486,18 @@ def run_stdin_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
 
         if not executable_path.is_file():
             skipped += 1
-            print(f"[SKIP] Missing executable: {raw_path}", file=sys.stderr)
+            print(f"[SKIP] Missing Mach-O: {raw_path}", file=sys.stderr)
+            audit_result(
+                audit,
+                mode="standalone",
+                firmware_name="",
+                input_path=raw_path,
+                command=None,
+                status="skipped",
+                returncode=None,
+                header_count=0,
+                reason="missing input",
+            )
             continue
 
         try:
@@ -304,12 +511,34 @@ def run_stdin_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
                 ),
                 file=sys.stderr,
             )
+            audit_result(
+                audit,
+                mode="standalone",
+                firmware_name="",
+                input_path=raw_path,
+                command=None,
+                status="skipped",
+                returncode=None,
+                header_count=0,
+                reason="input is outside firmwares root",
+            )
             continue
 
         parts = rel_to_root.parts
         if len(parts) < 2:
             skipped += 1
-            print(f"[SKIP] Invalid executable path under root: {raw_path}", file=sys.stderr)
+            print(f"[SKIP] Invalid Mach-O path under root: {raw_path}", file=sys.stderr)
+            audit_result(
+                audit,
+                mode="standalone",
+                firmware_name="",
+                input_path=raw_path,
+                command=None,
+                status="skipped",
+                returncode=None,
+                header_count=0,
+                reason="invalid input path under firmwares root",
+            )
             continue
 
         firmware_name = parts[0]
@@ -328,42 +557,99 @@ def run_stdin_mode(args: argparse.Namespace) -> tuple[int, int, int, int]:
             command_input_path,
         ]
 
-        print(f"[RUN ] {quote_command(command)}")
+        print(f"[RUN ] {quote_command(command)}", flush=True)
         if args.dry_run:
+            audit_result(
+                audit,
+                mode="standalone",
+                firmware_name=firmware_name,
+                input_path=str(executable_path),
+                command=command,
+                status="dry_run",
+                returncode=None,
+                header_count=0,
+            )
             succeeded += 1
             continue
 
-        result = run_command(command)
-        if result.returncode == 0:
+        expected_output_dir = out_dir / binary_relpath.name
+        log_path = (
+            audit.log_path(firmware_name, str(executable_path))
+            if audit.root is not None
+            else None
+        )
+        result = run_command(command, log_path)
+        header_count = count_headers(expected_output_dir)
+        if result.returncode == 0 and header_count > 0:
             succeeded += 1
-            remove_empty_binary_output_dir(out_dir / binary_relpath.name)
+            retained_log = retain_nonempty_log(result)
+            audit_result(
+                audit,
+                mode="standalone",
+                firmware_name=firmware_name,
+                input_path=str(executable_path),
+                command=command,
+                status="succeeded",
+                returncode=result.returncode,
+                header_count=header_count,
+                log_path=retained_log,
+            )
+        elif result.returncode == 0:
+            empty += 1
+            remove_empty_binary_output_dir(expected_output_dir)
+            audit_result(
+                audit,
+                mode="standalone",
+                firmware_name=firmware_name,
+                input_path=str(executable_path),
+                command=command,
+                status="empty",
+                returncode=result.returncode,
+                header_count=0,
+                log_path=result.log_path,
+                reason="class-dump produced no headers",
+            )
         else:
             failed += 1
+            audit_result(
+                audit,
+                mode="standalone",
+                firmware_name=firmware_name,
+                input_path=str(executable_path),
+                command=command,
+                status="failed",
+                returncode=result.returncode,
+                header_count=header_count,
+                log_path=result.log_path,
+                reason="class-dump exited with a nonzero status",
+            )
             print(
-                f"[FAIL] Executable {raw_path} exited with code {result.returncode}",
+                f"[FAIL] Mach-O {raw_path} exited with code {result.returncode}",
                 file=sys.stderr,
             )
             if not args.continue_on_error:
                 raise SystemExit(result.returncode)
 
-    return total, succeeded, skipped, failed
+    return total, succeeded, empty, skipped, failed
 
 
 def main() -> None:
     args = parse_args()
+    audit = AuditWriter(None if args.no_audit else args.audit_root)
 
     use_cache_mode = args.all or args.firmware_name is not None
     has_stdin_input = not sys.stdin.isatty()
 
     if use_cache_mode:
-        total, succeeded, skipped, failed = run_cache_mode(args)
+        total, succeeded, empty, skipped, failed = run_cache_mode(args, audit)
     else:
         if not has_stdin_input:
-            raise SystemExit("Provide firmware_name / --all, or pipe executable paths from stdin")
-        total, succeeded, skipped, failed = run_stdin_mode(args)
+            raise SystemExit("Provide firmware_name / --all, or pipe Mach-O paths from stdin")
+        total, succeeded, empty, skipped, failed = run_stdin_mode(args, audit)
 
     print(
-        f"Done. total={total} succeeded={succeeded} skipped={skipped} failed={failed}",
+        f"Done. total={total} succeeded={succeeded} empty={empty} "
+        f"skipped={skipped} failed={failed}",
         file=sys.stderr if failed else sys.stdout,
     )
 

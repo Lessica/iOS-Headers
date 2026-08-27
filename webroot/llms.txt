@@ -44,10 +44,12 @@ Search does NOT support:
 4. Only use /raw when plain text output is required.
 
 ## Directory Name Format
-- directory_name uses the last 2 path segments: parent_dir/dir_name
+- directory_name normally uses the last 2 path segments: parent_dir/dir_name
+- versioned framework paths normalize Foo.framework/Versions/A/Foo to Foo.framework/Foo
 - Examples:
   - CFNetwork.framework/CFNetwork
   - Foundation.framework/Foundation
+  - IOKit.framework/IOKit
   - libexec/backboardd
 
 ## Practical Examples

@@ -50,6 +50,17 @@
 
 ## v2 导入流程（无去重）
 
+### 生成头文件
+
+dyld shared cache 与 standalone Mach-O 分两步处理：
+
+- shared cache：`python3 scripts/class_dump_dsc.py <bundle-name>`
+- standalone Mach-O：`python3 scripts/find_macho_executables.py .files/<bundle-name> | python3 scripts/class_dump_dsc.py --continue-on-error`
+
+standalone 扫描器只输出包含 Objective-C 定义段的 `MH_EXECUTE`、`MH_DYLIB` 和 `MH_BUNDLE`，避免把只有 Objective-C 引用或不受 `class-dump` 支持的二进制送入生成流程。
+
+每个 dump 目标的状态、输出头文件数量和命令信息默认追加到 `data/class_dump_audit/manifest.jsonl`。失败、零输出或成功但产生 stderr 的目标会把完整错误/警告日志保存在 `data/class_dump_audit/logs/<run-id>/`。可用 `--audit-root` 改变位置，或用 `--no-audit` 禁用。
+
 ### 依赖
 
 - 建立 Python 虚拟环境（推荐）：
@@ -79,7 +90,8 @@
 - `contents` 中通过 `pack_object_key + pack_offset + pack_length` 定位正文片段。
 - 分片与包大小可调：`--pack-shards`（默认 256）、`--pack-target-bytes`（默认 64MiB）。
 - 导入会对 `versions(version_num, version_id)` 与 `paths(path_id)` 做增量唯一写入，避免分批导入造成重复项。
-- `paths` 表包含派生列（`file_name/file_name_lc/dir_path/dir_name/dir_name_lc`）以优化站点查询，避免运行时路径正则处理；其中 `dir_name` 为目录键（父目录名/目录名，last2 segments），即路由参数 `directory_name`（例如 `CFNetwork.framework/CFNetwork`、`libexec/backboardd`）。
+- `paths` 表包含派生列（`file_name/file_name_lc/dir_path/dir_name/dir_name_lc`）以优化站点查询，避免运行时路径正则处理；通常 `dir_name` 为路径末两段。对于 `Foo.framework/Versions/<version>/Foo`，目录键规范化为 `Foo.framework/Foo`，避免产生 `A/Foo`。该键即路由参数 `directory_name`（例如 `CFNetwork.framework/CFNetwork`、`IOKit.framework/IOKit`、`libexec/backboardd`）。
+- 文件正文导入与符号索引解析相互独立。无法识别 owner 的生成头文件仍会写入 ClickHouse/MinIO，仅跳过该文件的 symbols。
 - 默认禁止导入“老于当前库最新版本”的新版本（避免破坏增量语义）。
 - 如需强制导入老版本，显式添加参数：`--allow-old-versions`。
 - 当前流程为 **no-dedup**（不做 content 去重）。
@@ -109,6 +121,8 @@
 1. `scripts/import_headers_v2.zsh ...`
 2. `scripts/build_symbol_presence_v2.zsh --truncate-first`
 3. `clickhouse/manual/scripts/backfill_path_versions.zsh`
+
+已有数据库升级目录键时，另行执行 `clickhouse/manual/scripts/migrate_framework_versions_dir_key.zsh`。该脚本会重建并切换 `paths` 表；不会由应用启动流程自动执行。
 
 ## 端点
 

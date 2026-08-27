@@ -798,7 +798,14 @@ def _extract_directory_name(absolute_path: str) -> str | None:
     if not path_segments:
         return None
 
-    directory_key_segments = path_segments[-2:]
+    if (
+        len(path_segments) >= 4
+        and path_segments[-3] == "Versions"
+        and path_segments[-4].endswith(".framework")
+    ):
+        directory_key_segments = [path_segments[-4], path_segments[-1]]
+    else:
+        directory_key_segments = path_segments[-2:]
     return "/".join(directory_key_segments)
 
 

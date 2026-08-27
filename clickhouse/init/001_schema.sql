@@ -25,12 +25,21 @@ CREATE TABLE IF NOT EXISTS ios_headers.paths (
     file_name String MATERIALIZED extract(absolute_path, '[^/]+$'),
     file_name_lc String MATERIALIZED lowerUTF8(file_name),
     dir_path String MATERIALIZED replaceRegexpOne(absolute_path, '/[^/]+$', ''),
-    dir_name String MATERIALIZED arrayStringConcat(
-        arraySlice(
-            arrayFilter(segment -> segment != '', splitByChar('/', dir_path)),
-            -2
-        ),
-        '/'
+    dir_name String MATERIALIZED if(
+        length(arrayFilter(segment -> segment != '', splitByChar('/', dir_path))) >= 4
+        AND arrayElement(arrayFilter(segment -> segment != '', splitByChar('/', dir_path)), -3) = 'Versions'
+        AND endsWith(arrayElement(arrayFilter(segment -> segment != '', splitByChar('/', dir_path)), -4), '.framework'),
+        arrayStringConcat([
+            arrayElement(arrayFilter(segment -> segment != '', splitByChar('/', dir_path)), -4),
+            arrayElement(arrayFilter(segment -> segment != '', splitByChar('/', dir_path)), -1)
+        ], '/'),
+        arrayStringConcat(
+            arraySlice(
+                arrayFilter(segment -> segment != '', splitByChar('/', dir_path)),
+                -2
+            ),
+            '/'
+        )
     ),
     dir_name_lc String MATERIALIZED lowerUTF8(dir_name),
     created_at DateTime DEFAULT now()

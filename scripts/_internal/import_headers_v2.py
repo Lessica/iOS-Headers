@@ -478,7 +478,7 @@ def parse_header_symbols(path: Path, lines: list[str]) -> list[ParsedSymbol] | N
     def require_owner(symbol_type: str, line_no: int) -> tuple[str, str] | None:
         if owner_kind not in OWNER_KINDS or owner_name is None or not owner_name.strip():
             print(
-                f"[warn] skip file due to unknown symbol owner: "
+                f"[warn] skip symbol indexing due to unknown symbol owner: "
                 f"file={path} line={line_no} symbol_type={symbol_type}",
                 file=sys.stderr,
             )
@@ -679,14 +679,14 @@ def assign_version_numbers(
     return assigned
 
 
-def parse_file_task(file_path: Path) -> tuple[str, int, list[ParsedSymbol], bytes] | None:
+def parse_file_task(file_path: Path) -> tuple[str, int, list[ParsedSymbol], bytes]:
     raw_bytes = file_path.read_bytes()
     normalized_bytes = collapse_consecutive_duplicate_lines(raw_bytes)
     text_md5 = hashlib.md5(normalized_bytes).hexdigest()
     normalized_lines = normalized_bytes.decode("utf-8", errors="replace").splitlines()
     symbols = parse_header_symbols(file_path, normalized_lines)
     if symbols is None:
-        return None
+        symbols = []
     return (text_md5, len(normalized_bytes), symbols, normalized_bytes)
 
 
@@ -787,12 +787,6 @@ def import_bundle(
                     if not args.continue_on_error:
                         raise
                     print(f"[error] parse failed: {current_file} reason={exc}", file=sys.stderr)
-                    skipped_files += 1
-                    bundle_state["next_index"] = offset + 1
-                    save_state(args.state_file, state)
-                    continue
-
-                if parsed is None:
                     skipped_files += 1
                     bundle_state["next_index"] = offset + 1
                     save_state(args.state_file, state)
